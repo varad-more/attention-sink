@@ -39,16 +39,16 @@ Dependencies point downward, and never back up. This is enforced by
 
 ### `packages/` - importable libraries
 
-| Package         | Responsibility                                                               | Status            |
-| --------------- | ---------------------------------------------------------------------------- | ----------------- |
-| `domain`        | Memories, memory state, policy decisions, lineage, configuration, ledger     | Phase 2, complete |
-| `policies`      | The six mechanisms plus two reference arms, deterministic and pure           | Phase 2, complete |
-| `protocol`      | Schema, protocol, application, and commit version identity                   | phase 1           |
-| `model_gateway` | Runtime mode, model configuration, local fixtures; later the Bedrock adapter | phase 1 (partial) |
-| `persistence`   | DynamoDB and S3 adapters, event ledger, projections                          | not created       |
-| `metrics`       | Scoring, evidence capture, evaluator and calculation versioning              | not created       |
-| `prompts`       | Versioned, hashed prompt templates                                           | not created       |
-| `observability` | Structured logging, tracing, metrics, idempotency                            | not created       |
+| Package         | Responsibility                                                                                                                        | Status            |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
+| `domain`        | Memories, memory state, policy decisions, lineage, configuration, ledger                                                              | Phase 2, complete |
+| `policies`      | The six mechanisms plus two reference arms, deterministic and pure                                                                    | Phase 2, complete |
+| `protocol`      | Schema, protocol, application, and commit version identity                                                                            | phase 1           |
+| `model_gateway` | Runtime and model configuration, prompts, typed model protocols, Bedrock/Strands adapters, token counting, embeddings, local fixtures | phase 3, complete |
+| `persistence`   | DynamoDB and S3 adapters, event ledger, projections                                                                                   | not created       |
+| `metrics`       | Scoring, evidence capture, evaluator and calculation versioning                                                                       | not created       |
+| `prompts`       | Versioned, hashed prompt templates                                                                                                    | not created       |
+| `observability` | Structured logging, tracing, metrics, idempotency                                                                                     | not created       |
 
 ### `services/` - one directory per Lambda handler
 

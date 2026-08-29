@@ -28,9 +28,10 @@ Delivered:
   22.12+ is required as a result.
 - `packages/protocol` - version identity (schema, protocol, application, git commit)
   available to every backend service.
-- `packages/model_gateway` - runtime mode resolution and the local fixture adapter.
-  Local mode needs no AWS credentials and marks output simulated; production mode
-  refuses to start without a Region and all five model identifiers.
+- `packages/model_gateway` - runtime mode resolution and an untyped local fixture
+  adapter. Local mode needs no AWS credentials and marks output simulated;
+  production mode refuses to start without a Region and all five model
+  identifiers. The fixture adapter was replaced in Phase 3; see the note below.
 - Web shell with a permanent simulated-data banner in local mode.
 - CDK app that synthesises with no credentials and declares no resources yet.
 - Seven ADRs, a system-context and container view, `CONTRIBUTING.md`, `SECURITY.md`,
@@ -108,9 +109,83 @@ statistics, and a `rebalance(state, budget, context) -> PolicyDecision` contract
 both packages were rebuilt rather than adapted. The two shapes disagree about where
 mutable state lives, and a half-migration would have left both.
 
-## Phase 3 and later
+## Phase 3 - The model gateway and schema-validated AI interactions
 
-Not started: persistence and the event ledger, Step Functions orchestration, the
-model gateway's Bedrock adapter, prompts, the citation auditor, metrics computation,
-public API, WebSocket, forks, moderation, CDK resources, deployment, and the
-experiment views in the web client.
+**Status: complete.**
+
+Delivered:
+
+- `packages/model_gateway` - seven typed protocols (`ThoughtWriter`,
+  `CitationAuditor`, `MemorySummarizer`, `Interviewer`, `ClaimEvaluator`,
+  `EmbeddingProvider`, `ExactTokenCounter`), one implementation set that runs over
+  either a real provider or a deterministic local one, and a factory that chooses
+  between them from validated configuration. No model interaction bypasses a protocol.
+- One provider seam. `StructuredInvoker` is the only interface to a model; below it
+  sits a single Bedrock class, `StrandsInvoker`, which builds a fresh stateless
+  Strands agent per call with the model identifier always passed explicitly.
+  Everything above it - prompt rendering, the blindness guard, response verification,
+  retries, metadata - is provider-agnostic and runs unchanged in fixture mode.
+- Six versioned prompt files shipped inside the package, each loaded with a SHA-256
+  digest of its own bytes, plus a digest covering the whole set for the run manifest.
+- Strict output schemas for all five text roles, with closed vocabularies for every
+  categorical judgement, and adapter checks the schema cannot express: unknown labels
+  rejected, one audit per claim, quoted evidence verified against the memory it cites,
+  summary sources and ceiling enforced, every interview question answered.
+- Policy blindness enforced mechanically. Memories are presented under per-request
+  labels (ADR-010), so no real identifier - and therefore no arm name - reaches a
+  prompt; `assert_policy_blind` then rejects arm identifiers, policy version strings,
+  and mechanism vocabulary in every rendered request, on every attempt.
+- Eight error codes, classified once, retried only where retrying can help, with
+  bounded exponential backoff and full jitter. An unrecognised exception is re-raised
+  rather than mislabelled.
+- `CallMetadata` on every call, success or failure, carried on the exception when a
+  call fails. Only the provider request identifier is read from a response; headers
+  never are.
+- Exact token counting through Bedrock `CountTokens`, cached on model identifier and
+  content hash, with no fallback to the heuristic in production (ADR-011).
+- Titan Text Embeddings V2 with configurable dimensions, model-side normalisation,
+  and deduplication on `(model_id, input_hash)`.
+- Fixture mode: a complete local cycle with no AWS account, reproducible, and marked
+  simulated in both text and metadata.
+- `docs/model-gateway.md`, ADR-010 (opaque memory labels) and ADR-011 (exact token
+  counts, amending ADR-008).
+
+Test and coverage position:
+
+- 606 tests: unit, Hypothesis property, and integration. 603 run; the three Bedrock
+  contract tests are skipped unless `AS_BEDROCK_CONTRACT_TESTS=1`.
+- `tests/integration/test_fixture_cycle.py` drives one complete cycle through the
+  Phase 2 kernel and the Phase 3 gateway together: write, audit, fold citations into
+  the arm's statistics, plan a compression, write the summary, commit it, then
+  interview, judge, and embed the result.
+- **99%** of `packages/model_gateway`, gated at 95% in `make test` alongside the
+  domain and policy packages. The uncovered lines are the three inside
+  `StrandsInvoker.invoke` that actually reach Bedrock; the agent construction and the
+  response unpacking around them are split out and tested.
+
+Deliberately not delivered in this phase:
+
+- No orchestration. Nothing sequences a cycle; the integration test wires the two
+  halves together by hand, and that wiring is Phase 4's subject.
+- No persistence. Nothing writes a `LedgerEvent`, a `CycleSnapshot`, or an
+  `EmbeddingRecord`; the gateway's caches are per process and vanish with it.
+- No no-op or failure implementations of the protocols. The brief permits them "only
+  where explicitly useful", and nothing in this phase needed one: tests define their
+  own doubles, and a shipped always-failing adapter would be a thing production could
+  accidentally be configured with.
+- No API, metrics computation, CDK resources, or web client work.
+
+### Note on the Phase 1 fixture adapter
+
+`FixtureModelGateway` served canned JSON responses keyed by task and string. It was
+removed in this phase along with `datasets/fixtures/model_responses/`. It answered
+requests no typed protocol had shaped and returned values no schema had validated,
+which is exactly what acceptance criterion 1 - no model interaction bypasses a typed
+gateway - forbids. Fixture responses are now produced by `FixtureInvoker` behind the
+same adapters production uses.
+
+## Phase 4 and later
+
+Not started: persistence and the event ledger, Step Functions orchestration, metrics
+computation, public API, WebSocket, forks, moderation, CDK resources, deployment, and
+the experiment views in the web client.

@@ -53,6 +53,16 @@ shows comes from a fixture, not from a run. Production mode requires a Region an
 all five model identifiers, and refuses to start without them, so simulated output
 can never be mistaken for a result.
 
+Model access is a separate switch. `MODEL_MODE=fixture` is the default and needs no
+AWS account: it serves deterministic responses through the same typed gateway,
+prompts, and validation that production uses, and marks everything it produces as
+simulated. `MODEL_MODE=bedrock` makes real calls and fails closed without a Region
+and every model identifier. A production runtime may not run on fixtures at all.
+
+```bash
+make test-contract   # opt-in checks against real Bedrock; costs money, skipped by default
+```
+
 ## Repository layout
 
 ```
@@ -70,6 +80,7 @@ tests/               unit, property, integration, e2e
 
 - [Implementation status](docs/implementation-status.md) - what is built, and what is not
 - [Memory policies](docs/memory-policies.md) - the exact algorithm and tie-breaker for every arm
+- [Model gateway](docs/model-gateway.md) - the seven model roles, prompts and their digests, schemas, failures, and metadata
 - [System context](docs/architecture/system-context.md)
 - [Container view](docs/architecture/container-view.md)
 - [Architecture decision records](docs/adr/)

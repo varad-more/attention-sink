@@ -15,3 +15,5 @@ make us revisit it. Superseded records stay in place; they are not deleted.
 | [007](007-python-backend-typescript-infrastructure-react-frontend.md) | Python backend, TypeScript infrastructure, React frontend      |
 | [008](008-budget-token-accounting.md)                                 | The budget is denominated in versioned budget tokens           |
 | [009](009-two-stage-compression.md)                                   | Compression is policy-planned and model-written, in two stages |
+| [010](010-opaque-memory-labels-in-prompts.md)                         | Models see memories under opaque per-request labels            |
+| [011](011-exact-token-counts-in-production.md)                        | Production budgets use the model's own token counts            |

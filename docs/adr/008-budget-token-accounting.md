@@ -1,6 +1,8 @@
 # 8. The active-memory budget is denominated in versioned budget tokens
 
-Status: Accepted, 2026-08-29.
+Status: Accepted, 2026-08-29. Amended by [ADR-011](011-exact-token-counts-in-production.md),
+which makes the writer model's own tokenisation the production unit and confines
+`heuristic-v1` to isolated tests and local fixture mode.
 
 ## Context
 
