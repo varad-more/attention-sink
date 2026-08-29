@@ -7,7 +7,7 @@ make bootstrap
 ```
 
 Installs Python dependencies with `uv`, Node dependencies with `npm`, and the
-pre-commit hooks. Requires Python 3.12, Node 20+, and `uv`. It does not require AWS
+pre-commit hooks. Requires Python 3.12, Node 20.19+ or 22.12+, and `uv`. It does not require AWS
 credentials, and nothing in the local development loop ever will.
 
 ## The loop

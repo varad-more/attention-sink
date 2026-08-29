@@ -21,7 +21,11 @@ Delivered:
   import only itself; `packages/policies` may import only the domain; neither may
   import `boto3`, `botocore`, Strands, Powertools, CDK, or moto.
 - TypeScript workspace: strict `tsconfig.base.json`, ESLint flat config with
-  type-aware rules, Prettier, Vitest, CDK assertions, `package-lock.json`.
+  type-aware rules, Prettier, Vitest, CDK assertions, `package-lock.json`. Vite 8,
+  Vitest 4, and CDK 2.267 are pinned deliberately: the versions the templates
+  default to carry five advisories, one critical, in the dev server and test
+  runner. `npm audit` reports zero on the committed lockfile, and Node 20.19+ or
+  22.12+ is required as a result.
 - `packages/protocol` - version identity (schema, protocol, application, git commit)
   available to every backend service.
 - `packages/model_gateway` - runtime mode resolution and the local fixture adapter.

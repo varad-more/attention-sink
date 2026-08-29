@@ -29,7 +29,7 @@ mechanism under study is the one the application controls. See
 
 ## Getting started
 
-Prerequisites: Python 3.12, Node 20+, and [uv](https://docs.astral.sh/uv/).
+Prerequisites: Python 3.12, Node 20.19+ or 22.12+, and [uv](https://docs.astral.sh/uv/).
 
 ```bash
 make bootstrap   # install Python and Node dependencies, and the git hooks

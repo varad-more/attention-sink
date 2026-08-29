@@ -9,13 +9,13 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "aws-cdk-lib": "^2.166.0",
+    "aws-cdk-lib": "^2.267.0",
     "constructs": "^10.4.2"
   },
   "devDependencies": {
     "@types/node": "^22.9.0",
-    "aws-cdk": "^2.166.0",
+    "aws-cdk": "^2.1139.0",
     "tsx": "^4.19.2",
-    "vitest": "^2.1.5"
+    "vitest": "^4.1.11"
   }
 }
