@@ -1,0 +1,70 @@
+{
+  "run_id": "run_simulated_divergence",
+  "cycle": 12,
+  "stimulus_id": "stim_012",
+  "protocol_version": "2026.08-draft",
+  "prompt_version": "prompts-v1",
+  "run_random_seed": "seed-simulated-divergence-01",
+  "budget": { "max_active_tokens": 60, "counter_version": "heuristic-v1" },
+  "policies": {
+    "heavy_hitter": { "recency_reserve": 2 },
+    "pinned_origin": { "pinned_memory_id": null },
+    "summarization": { "summary_target_token_limit": 12, "safety_margin_tokens": 4 }
+  },
+  "arms": ["arm_fifo", "arm_lru", "arm_heavy", "arm_sink", "arm_random", "arm_summary"],
+  "simulated_summary_tokens": 10,
+  "memories": [
+    {
+      "text": "The first morning: I was told the courtyard was mine to tend.",
+      "token_count": 16,
+      "memory_kind": "seed",
+      "birth_cycle": 0,
+      "pinned": true,
+      "citation_count": 3,
+      "last_verified_citation_cycle": 9,
+      "discounted_citation_score": 4.1
+    },
+    {
+      "text": "A neighbour asked what the courtyard was for, and I had no answer.",
+      "token_count": 18,
+      "memory_kind": "generated",
+      "birth_cycle": 2,
+      "citation_count": 1,
+      "last_verified_citation_cycle": 3,
+      "discounted_citation_score": 0.4
+    },
+    {
+      "text": "The fig tree came back after the frost. I decided that counted as tending.",
+      "token_count": 20,
+      "memory_kind": "generated",
+      "birth_cycle": 4,
+      "citation_count": 5,
+      "last_verified_citation_cycle": 11,
+      "discounted_citation_score": 6.2
+    },
+    {
+      "text": "I catalogued the stones by colour for no reason I can now reconstruct.",
+      "token_count": 19,
+      "memory_kind": "generated",
+      "birth_cycle": 6,
+      "discounted_citation_score": 0.0
+    },
+    {
+      "text": "Someone left a note on the gate. I have not decided whether to answer it.",
+      "token_count": 20,
+      "memory_kind": "external",
+      "birth_cycle": 9,
+      "source_stimulus_id": "stim_009",
+      "citation_count": 1,
+      "last_verified_citation_cycle": 10,
+      "discounted_citation_score": 1.0
+    },
+    {
+      "text": "Today the light reached the far wall for the first time since winter.",
+      "token_count": 18,
+      "memory_kind": "generated",
+      "birth_cycle": 12,
+      "source_stimulus_id": "stim_012"
+    }
+  ]
+}

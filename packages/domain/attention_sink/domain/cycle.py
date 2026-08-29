@@ -41,11 +41,6 @@ class CycleContext(BaseModel):
     prompt_version: PromptVersion
     run_random_seed: str = Field(min_length=8, max_length=256)
 
-    @property
-    def error_context(self) -> dict[str, str | int]:
-        """Run, arm, and cycle, for attaching to any failure raised under it."""
-        return {"run_id": self.run_id, "arm_id": self.arm_id.value, "cycle": self.cycle}
-
 
 class CycleSnapshot(BaseModel):
     """The immutable record of what one arm held, and decided, in one cycle.

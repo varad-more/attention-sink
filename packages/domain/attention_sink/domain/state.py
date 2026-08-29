@@ -299,10 +299,8 @@ class MemoryState(BaseModel):
                 f"projected {decision.tokens_after}"
             )
             raise PolicyError(msg, **ctx)
-        if decision.is_final and rebuilt.active_tokens > decision.budget_tokens:
-            msg = (
-                f"{self.arm_id.value} would hold {rebuilt.active_tokens} tokens, over its "
-                f"budget of {decision.budget_tokens}"
-            )
-            raise PolicyError(msg, **ctx)
+        # No budget check here. PolicyDecision refuses to exist if a final decision
+        # exceeds its budget, and the projection check above has just established that
+        # the applied state costs exactly what the decision claimed. A third check
+        # could never fire, and unreachable safety code is not safety.
         return rebuilt

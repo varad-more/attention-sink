@@ -6,7 +6,7 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 .PHONY: help bootstrap format lint typecheck test test-unit test-property \
-	test-integration test-web synth dev verify clean
+	test-integration test-web synth dev verify clean simulate
 
 UV ?= uv
 NPM ?= npm
@@ -43,9 +43,16 @@ test-property: ## Hypothesis tests asserting invariants over generated inputs
 test-integration: ## Tests that cross a process or adapter boundary
 	$(UV) run pytest tests/integration -m integration
 
-test: ## All Python tests, with coverage
+test: ## All Python tests, with coverage, gated per package
 	$(UV) run pytest tests/unit tests/property tests/integration \
 		--cov --cov-report=term-missing --cov-report=xml
+	@# Gated per package, not in aggregate: a well-covered package must not be
+	@# allowed to hide an untested one behind a flattering total.
+	$(UV) run coverage report --include='packages/domain/*' --fail-under=95
+	$(UV) run coverage report --include='packages/policies/*' --fail-under=95
+
+simulate: ## Run the policy simulator against a fixture (FIXTURE=path)
+	$(UV) run python scripts/simulate_policy.py $(FIXTURE)
 
 test-web: ## TypeScript tests across every workspace (web client and CDK)
 	$(NPM) run test --workspaces --if-present

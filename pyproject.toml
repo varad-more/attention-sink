@@ -128,7 +128,9 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["D100", "D101", "D102", "D103", "D104", "S101", "ANN"]
+# S311 is deliberate in tests: replaying the seeded generator is exactly what the
+# random arm has to be proved to do.
+"tests/**" = ["D100", "D101", "D102", "D103", "D104", "S101", "S311", "ANN"]
 "scripts/**" = ["S101"]
 
 [tool.ruff.lint.pydocstyle]
@@ -148,9 +150,7 @@ disallow_any_unimported = true
 namespace_packages = true
 explicit_package_bases = true
 mypy_path = "packages/domain:packages/model_gateway:packages/policies:packages/protocol"
-# Add "scripts" here the moment that directory holds a module; mypy errors on an
-# empty directory, and a silently unchecked script directory is worse than that.
-files = ["packages", "tests"]
+files = ["packages", "scripts", "tests"]
 
 # Strictness is mandatory below the adapter line; in tests it only adds noise to
 # assertions whose types are obvious from the call.

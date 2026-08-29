@@ -17,11 +17,18 @@ __all__ = [
 ]
 
 _FIELD_SEPARATOR = "|"
-"""Separator for digest payloads.
 
-Excluded from ``IDENTIFIER_PATTERN``, so no combination of identifiers can produce
-two different field lists with the same joined payload.
-"""
+
+def _join(fields: Iterable[str]) -> str:
+    """Join fields into an unambiguously decodable digest payload.
+
+    Each field is length-prefixed. A bare separator would make the payload injective
+    only for as long as no field could contain that separator -- true today, because
+    ``IDENTIFIER_PATTERN`` excludes it, but true because of an invariant enforced in
+    another module. Length-prefixing makes the digest injective on its own terms, so
+    a future identifier format cannot silently introduce a collision.
+    """
+    return _FIELD_SEPARATOR.join(f"{len(field)}:{field}" for field in fields)
 
 
 def content_hash(text: str) -> str:
@@ -41,7 +48,7 @@ def state_hash(memory_ids: Iterable[str]) -> str:
     presented to the writer is part of the state, so two arms holding the same
     memories in a different order are not in the same state.
     """
-    payload = _FIELD_SEPARATOR.join(memory_ids)
+    payload = _join(memory_ids)
     return f"sha256:{hashlib.sha256(payload.encode('utf-8')).hexdigest()}"
 
 
@@ -55,8 +62,9 @@ def selection_digest(
 ) -> str:
     """Derive the digest that seeds one pseudo-random eviction choice.
 
-    The payload is ``run_random_seed | arm_id | cycle | decision_index`` followed by
-    the candidate identifiers in ascending order. Sorting the candidates means the
+    The payload is ``run_random_seed``, ``arm_id``, ``cycle``, ``decision_index``,
+    then the candidate identifiers in ascending order, each length-prefixed and joined
+    by ``|``. Sorting the candidates means the
     draw depends on *which* memories were eligible and not on the order the caller
     happened to enumerate them in, so the choice replays from stored state alone.
 
@@ -71,5 +79,4 @@ def selection_digest(
         str(decision_index),
         *sorted(candidate_memory_ids),
     )
-    payload = _FIELD_SEPARATOR.join(fields)
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+    return hashlib.sha256(_join(fields).encode("utf-8")).hexdigest()

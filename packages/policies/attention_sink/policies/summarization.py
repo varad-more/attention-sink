@@ -115,6 +115,12 @@ class SummarizationPolicy:
     ) -> PolicyDecision:
         """Commit ``summary`` against ``plan`` and decide what the arm still needs.
 
+        The budget is re-checked rather than assumed. A plan produced by
+        :meth:`rebalance` under this budget always lands inside it, but a plan can
+        also arrive from elsewhere -- replayed from the ledger, or carried into a fork
+        whose budget was tightened -- and a policy that trusted a plan it did not just
+        make would commit a summary that leaves the arm over budget.
+
         Raises:
             LineageError: The summary does not name exactly the planned sources, or
                 does not occupy the identifier the plan reserved.
@@ -131,7 +137,15 @@ class SummarizationPolicy:
         )
         self._validate_summary(state, plan, summary, error_context)
 
-        sources = tuple(state.active_memories[i] for i in self._source_indices(state, plan))
+        # Sources are ordered the way the plan chose them -- oldest first -- rather than
+        # the order they sit in the active set. The recorded ordering and the recorded
+        # retirements have to agree, or the provenance would describe a different
+        # decision from the one that ran.
+        active = {memory.memory_id: memory for memory in state.active_memories}
+        source_candidates = rank_candidates(
+            [active[memory_id] for memory_id in plan.source_memory_ids], FIFO_ORDERING
+        )
+        sources = tuple(memory for memory, _ in source_candidates)
         tokens_after = state.active_tokens - plan.tokens_freed + summary.token_count
         lineage = tuple(
             MemoryLineageEdge(
@@ -150,7 +164,6 @@ class SummarizationPolicy:
             if memory.memory_id not in compressed_ids
         ]
         candidates = rank_candidates(surviving, FIFO_ORDERING)
-        source_candidates = rank_candidates(sources, FIFO_ORDERING)
 
         if budget.is_satisfied_by(tokens_after):
             return build_decision(
@@ -277,14 +290,6 @@ class SummarizationPolicy:
             policy_version=self.policy_version,
             code=PolicyDecisionCode.SUMMARY_FALLBACK_FIFO,
             ordering=FIFO_ORDERING,
-        )
-
-    def _source_indices(self, state: MemoryState, plan: CompressionPlan) -> tuple[int, ...]:
-        wanted = set(plan.source_memory_ids)
-        return tuple(
-            index
-            for index, memory in enumerate(state.active_memories)
-            if memory.memory_id in wanted
         )
 
     def _validate_summary(

@@ -190,27 +190,32 @@ class RunConfiguration(BaseModel):
             UnsatisfiableBudgetError: The seed set, or the pinned memory alone,
                 cannot fit the budget.
         """
+        # The pin is checked before the seed set as a whole. Both failures are budget
+        # failures, but "your pinned memory alone does not fit" names the parameter to
+        # change, where "your seed set does not fit" would leave the reader to work it
+        # out. The specific diagnosis is worth the ordering.
+        pinned_id = self.policies.pinned_origin.pinned_memory_id
+        if pinned_id is not None:
+            pinned = next((m for m in seed_memories if m.memory_id == pinned_id), None)
+            if pinned is None:
+                msg = f"pinned memory {pinned_id} is not present in the seed set"
+                raise PolicyError(msg, run_id=self.run_id)
+            if pinned.memory_kind is not MemoryKind.SEED:
+                msg = (
+                    f"pinned memory {pinned_id} is a {pinned.memory_kind.value} memory, not a seed"
+                )
+                raise PolicyError(msg, run_id=self.run_id)
+            if not self.budget.is_satisfied_by(pinned.token_count):
+                msg = (
+                    f"pinned memory {pinned_id} costs {pinned.token_count} tokens on its "
+                    f"own, over the {self.budget.max_active_tokens}-token budget"
+                )
+                raise UnsatisfiableBudgetError(msg, run_id=self.run_id)
+
         total = sum(memory.token_count for memory in seed_memories)
         if not self.budget.is_satisfied_by(total):
             msg = (
                 f"the seed set costs {total} tokens, over the "
                 f"{self.budget.max_active_tokens}-token budget every arm starts from"
-            )
-            raise UnsatisfiableBudgetError(msg, run_id=self.run_id)
-
-        pinned_id = self.policies.pinned_origin.pinned_memory_id
-        if pinned_id is None:
-            return
-        pinned = next((m for m in seed_memories if m.memory_id == pinned_id), None)
-        if pinned is None:
-            msg = f"pinned memory {pinned_id} is not present in the seed set"
-            raise PolicyError(msg, run_id=self.run_id)
-        if pinned.memory_kind is not MemoryKind.SEED:
-            msg = f"pinned memory {pinned_id} is a {pinned.memory_kind.value} memory, not a seed"
-            raise PolicyError(msg, run_id=self.run_id)
-        if not self.budget.is_satisfied_by(pinned.token_count):
-            msg = (
-                f"pinned memory {pinned_id} costs {pinned.token_count} tokens on its own, "
-                f"over the {self.budget.max_active_tokens}-token budget"
             )
             raise UnsatisfiableBudgetError(msg, run_id=self.run_id)
