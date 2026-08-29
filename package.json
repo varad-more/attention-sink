@@ -1,0 +1,29 @@
+{
+  "name": "attention-sink",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A controlled experiment in application-level episodic memory for generative agents.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "workspaces": [
+    "apps/web",
+    "infrastructure/cdk"
+  ],
+  "scripts": {
+    "lint": "prettier --check . && eslint .",
+    "format": "prettier --write .",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.15.0",
+    "eslint": "^9.15.0",
+    "prettier": "^3.3.3",
+    "typescript": "^5.6.3",
+    "typescript-eslint": "^8.15.0"
+  }
+}

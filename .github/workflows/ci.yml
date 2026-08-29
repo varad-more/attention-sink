@@ -1,0 +1,65 @@
+# CI runs the same targets a contributor runs. If this file and the Makefile ever
+# disagree about what "passing" means, the Makefile is right and this file is a bug.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: '3.12'
+          enable-cache: true
+
+      - name: Install dependencies
+        run: make bootstrap
+
+      # lint, typecheck, test (Python), test-web, synth - no AWS credentials are
+      # configured for this job, and none are needed. A step that starts requiring
+      # them has broken the local development guarantee.
+      - name: Verify
+        run: make verify
+        env:
+          AS_GIT_COMMIT: ${{ github.sha }}
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-coverage
+          path: coverage.xml
+          if-no-files-found: warn
+
+  secret-scan:
+    name: secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Same scanner as the pre-commit hook, so a finding never reaches CI as a
+      # surprise. Scanning organisation-owned repositories requires GITLEAKS_LICENSE.
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

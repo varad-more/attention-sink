@@ -1,0 +1,111 @@
+"""The dependency direction, enforced instead of reviewed.
+
+The pure packages are the part of this system that has to be testable without AWS,
+replayable without a network, and reasonable about on paper. That only stays true if
+nothing quietly imports an adapter into them, which is exactly the kind of change
+that slips past code review.
+
+Purity is declared here rather than inferred, so adding a package is a deliberate
+statement about which side of the adapter line it sits on.
+"""
+
+from __future__ import annotations
+
+import ast
+from pathlib import Path
+
+import pytest
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
+BANNED_TOP_LEVEL = frozenset(
+    {
+        "aws_cdk",
+        "aws_lambda_powertools",
+        "boto3",
+        "botocore",
+        "moto",
+        "strands",
+    }
+)
+"""Modules that must never appear below the adapter line, at any depth."""
+
+PURE_PACKAGES: dict[str, frozenset[str]] = {
+    "protocol": frozenset({"attention_sink.protocol"}),
+    "domain": frozenset({"attention_sink.domain"}),
+    "policies": frozenset({"attention_sink.domain", "attention_sink.policies"}),
+}
+"""Pure package name to the internal packages it may depend on.
+
+Policies may depend on the domain; the domain and the protocol may depend on nothing
+but themselves. Anything absent from a value here is a cycle or an inversion.
+
+Adapter packages - ``model_gateway`` and, later, ``persistence`` and
+``observability`` - are deliberately not listed: they exist to import the SDKs the
+pure packages must not.
+"""
+
+
+def _package_root(name: str) -> Path:
+    return REPO_ROOT / "packages" / name / "attention_sink" / name
+
+
+def _present_pure_packages() -> list[str]:
+    """Pure packages that exist in this checkout, in declaration order.
+
+    Packages arrive with the phase that needs them, so the table describes intent
+    for the whole system while the test runs against what is actually here.
+    """
+    return [name for name in PURE_PACKAGES if _package_root(name).is_dir()]
+
+
+PRESENT = _present_pure_packages()
+
+
+def _imported_modules(source: Path) -> set[str]:
+    """Return every module name imported by ``source``, in absolute form."""
+    tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
+    modules: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            modules.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+            modules.add(node.module)
+    return modules
+
+
+def test_at_least_one_pure_package_is_present():
+    assert PRESENT, "no pure package exists; the boundary test would be vacuous"
+
+
+@pytest.mark.parametrize("name", PRESENT)
+def test_package_has_modules_to_check(name: str):
+    assert sorted(_package_root(name).rglob("*.py")), f"{name} has no modules"
+
+
+@pytest.mark.parametrize("name", PRESENT)
+def test_no_adapter_imports_below_the_line(name: str):
+    offenders: list[str] = []
+    for source in sorted(_package_root(name).rglob("*.py")):
+        banned = sorted(
+            module
+            for module in _imported_modules(source)
+            if module.split(".")[0] in BANNED_TOP_LEVEL
+        )
+        offenders.extend(f"{source.relative_to(REPO_ROOT)} imports {m}" for m in banned)
+
+    assert not offenders, "adapter dependencies leaked into a pure package: " + "; ".join(offenders)
+
+
+@pytest.mark.parametrize("name", PRESENT)
+def test_internal_dependencies_point_one_way(name: str):
+    allowed = PURE_PACKAGES[name]
+    offenders: list[str] = []
+    for source in sorted(_package_root(name).rglob("*.py")):
+        for module in sorted(_imported_modules(source)):
+            if not module.startswith("attention_sink."):
+                continue
+            if not any(module == p or module.startswith(f"{p}.") for p in allowed):
+                offenders.append(f"{source.relative_to(REPO_ROOT)} imports {module}")
+
+    assert not offenders, "dependency direction violated: " + "; ".join(offenders)

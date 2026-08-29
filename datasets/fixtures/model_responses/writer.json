@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "task": "writer",
+  "simulated": true,
+  "responses": {
+    "smoke": {
+      "thought": "The light through the window has moved since I last looked at it.",
+      "cited_memory_ids": []
+    }
+  }
+}

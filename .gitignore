@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.coverage
+coverage.xml
+htmlcov/
+dist/
+*.egg-info/
+
+# Node
+node_modules/
+apps/web/dist/
+*.tsbuildinfo
+
+# CDK
+infrastructure/cdk/cdk.out/
+infrastructure/cdk/.cdk.staging/
+
+# Local configuration and secrets. .env.example is committed; .env never is.
+.env
+.env.*
+!.env.example
+
+# Editors and OS
+.DS_Store
+.idea/
+.vscode/

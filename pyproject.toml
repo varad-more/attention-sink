@@ -1,0 +1,149 @@
+[project]
+name = "attention-sink"
+version = "0.1.0"
+description = "A controlled experiment in application-level episodic memory for generative agents."
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+license = { text = "Apache-2.0" }
+
+dependencies = [
+    "pydantic>=2.9,<3",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3,<9",
+    "pytest-cov>=5.0,<7",
+    "hypothesis>=6.112,<7",
+    "ruff>=0.6.9,<0.13",
+    "mypy>=1.11,<2",
+    "pre-commit>=3.8,<5",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# ---------------------------------------------------------------------------
+# Package layout
+#
+# Every package lives under packages/<name>/attention_sink/<name>/ and shares the
+# PEP 420 namespace `attention_sink`. Listing each root here (rather than shipping
+# eight separate distributions) keeps one lockfile and one virtualenv, while the
+# import-boundary test in tests/unit/ enforces the dependency direction that
+# separate distributions would otherwise buy us.
+# ---------------------------------------------------------------------------
+[tool.hatch.build.targets.wheel]
+only-include = ["packages"]
+sources = [
+    "packages/model_gateway",
+    "packages/protocol",
+]
+dev-mode-dirs = [
+    "packages/model_gateway",
+    "packages/protocol",
+]
+
+[tool.uv]
+package = true
+
+# ---------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers --strict-config"
+filterwarnings = ["error"]
+markers = [
+    "unit: fast, isolated tests of a single pure component",
+    "property: Hypothesis tests asserting an invariant over generated inputs",
+    "integration: tests that cross a process or adapter boundary",
+    "e2e: tests that drive the deployed or locally served system end to end",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["packages"]
+omit = ["*/__init__.py"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "\\.\\.\\.$",
+]
+
+# ---------------------------------------------------------------------------
+# Lint and format
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = [
+    "packages/domain",
+    "packages/model_gateway",
+    "packages/policies",
+    "packages/protocol",
+    "scripts",
+    "tests",
+]
+
+[tool.ruff.lint]
+select = [
+    "E", "F", "W",   # pycodestyle + pyflakes
+    "I",             # import sorting
+    "UP",            # pyupgrade
+    "B",             # bugbear
+    "SIM",           # simplification
+    "C4",            # comprehensions
+    "RET",           # return hygiene
+    "ARG",           # unused arguments
+    "PTH",           # pathlib over os.path
+    "TID",           # tidy imports
+    "RUF",
+    "ANN",           # type annotations
+    "D",             # docstrings
+    "S",             # security lint
+    "FIX", "TD",     # no stray TODO / FIXME markers
+]
+ignore = [
+    "D203",   # incompatible with D211
+    "D213",   # incompatible with D212
+    "ANN401", # Any is permitted at narrow adapter seams
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["D100", "D101", "D102", "D103", "D104", "S101", "ANN"]
+"scripts/**" = ["S101"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+# ---------------------------------------------------------------------------
+# Types
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+disallow_any_unimported = true
+namespace_packages = true
+explicit_package_bases = true
+mypy_path = "packages/model_gateway:packages/protocol"
+# Add "scripts" here the moment that directory holds a module; mypy errors on an
+# empty directory, and a silently unchecked script directory is worse than that.
+files = ["packages", "tests"]
+
+# Strictness is mandatory below the adapter line; in tests it only adds noise to
+# assertions whose types are obvious from the call.
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+disallow_untyped_decorators = false
