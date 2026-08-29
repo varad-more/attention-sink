@@ -1,4 +1,4 @@
-"""Reference arms that bound the result, rather than competing in it.
+"""Reference arms that bound the result rather than competing in it.
 
 Neither arm is part of the canonical six. They exist so that a difference measured
 between mechanisms can be read against the best and worst cases available: perfect
@@ -9,80 +9,72 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from attention_sink.domain.active_memory import ActiveMemory
-from attention_sink.domain.enums import ArmId, DecisionCode
-from attention_sink.domain.errors import BudgetInfeasibleError
-from attention_sink.domain.rebalance import (
-    RebalanceContext,
-    RebalanceDecision,
-    RebalancePlan,
-)
-from attention_sink.policies.base import evictable_entries, plan_from_victim_order
+from attention_sink.domain.cycle import CycleContext
+from attention_sink.domain.decision import PolicyDecision
+from attention_sink.domain.enums import ArmId, PolicyDecisionCode
+from attention_sink.domain.state import MemoryState
+from attention_sink.domain.tokens import TokenBudget
+from attention_sink.policies.base import build_decision, eligible_memories, rank_candidates
+from attention_sink.policies.fifo import FIFO_ORDERING
 
 __all__ = ["FullMemoryPolicy", "StatelessPolicy"]
 
 
 @dataclass(frozen=True, slots=True)
 class FullMemoryPolicy:
-    """Evicts nothing: the upper reference, an agent that forgets nothing.
+    """Retires nothing: the upper reference, an agent that forgets nothing.
 
-    This arm must be configured with a budget large enough to hold the entire run.
-    If it is not, planning raises rather than quietly evicting, because a
-    full-memory reference that silently forgot would invalidate every comparison
-    drawn against it.
+    This arm must be configured with a budget large enough to hold the whole run. If
+    it is not, it raises rather than quietly evicting: a full-memory reference that
+    silently forgot would invalidate every comparison drawn against it.
     """
 
     arm_id: ArmId = ArmId.ARM_FULL
     policy_version: str = "full-v1"
 
-    def plan(self, candidate: ActiveMemory, context: RebalanceContext) -> RebalancePlan:
-        """Retain everything, and fail loudly if the configured budget cannot."""
-        return plan_from_victim_order(
-            candidate,
-            context,
+    def rebalance(
+        self, state: MemoryState, budget: TokenBudget, context: CycleContext
+    ) -> PolicyDecision:
+        """Keep everything, and fail loudly if the configured budget cannot."""
+        return build_decision(
+            state=state,
+            budget=budget,
+            context=context,
             policy_version=self.policy_version,
-            code=DecisionCode.EVICTED_OLDEST,
-            victim_order=(),
+            code=PolicyDecisionCode.RETAINED_ALL,
+            candidates=(),
+            victims=(),
+            tokens_after=state.active_tokens,
         )
 
 
 @dataclass(frozen=True, slots=True)
 class StatelessPolicy:
-    """Retains only the current cycle's admission: the lower reference, no past.
+    """Keeps only the current cycle's admission: the lower reference, no past at all.
 
-    Every past memory is dropped whether or not the budget required it, so this arm
-    measures what the stimulus alone can produce.
+    Every earlier memory is dropped whether or not the budget required it, so this
+    arm measures what the stimulus alone can produce.
     """
 
     arm_id: ArmId = ArmId.ARM_STATELESS
     policy_version: str = "stateless-v1"
 
-    def plan(self, candidate: ActiveMemory, context: RebalanceContext) -> RebalancePlan:
-        """Sacrifice every memory not admitted in this cycle."""
-        evictable = evictable_entries(candidate, context)
-        dropped = {entry.memory_id for entry in evictable}
-        kept = tuple(entry for entry in candidate.entries if entry.memory_id not in dropped)
-        kept_tokens = sum(entry.token_count for entry in kept)
-        if kept_tokens > candidate.budget_tokens:
-            msg = (
-                f"{context.arm_id.value} cycle {context.cycle_index}: this cycle's "
-                f"admission alone costs {kept_tokens} tokens, over the budget of "
-                f"{candidate.budget_tokens}"
-            )
-            raise BudgetInfeasibleError(msg)
-        return RebalancePlan(
-            run_id=context.run_id,
-            arm_id=context.arm_id,
-            cycle_index=context.cycle_index,
+    def rebalance(
+        self, state: MemoryState, budget: TokenBudget, context: CycleContext
+    ) -> PolicyDecision:
+        """Retire every memory carried in from an earlier cycle."""
+        candidates = rank_candidates(eligible_memories(state, context), FIFO_ORDERING)
+        victims = tuple(memory for memory, _ in candidates)
+        tokens_after = state.active_tokens - sum(memory.token_count for memory in victims)
+        return build_decision(
+            state=state,
+            budget=budget,
+            context=context,
             policy_version=self.policy_version,
-            retained_memory_ids=tuple(entry.memory_id for entry in kept),
-            decisions=tuple(
-                RebalanceDecision(
-                    memory_id=entry.memory_id,
-                    code=DecisionCode.EVICTED_STATELESS,
-                    rank_key=f"origin_ordinal={entry.origin_ordinal}",
-                )
-                for entry in evictable
-            ),
-            projected_tokens=kept_tokens,
+            code=PolicyDecisionCode.EVICTED_STATELESS
+            if victims
+            else PolicyDecisionCode.NO_ACTION_WITHIN_BUDGET,
+            candidates=candidates,
+            victims=victims,
+            tokens_after=tokens_after,
         )
