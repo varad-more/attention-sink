@@ -6,7 +6,7 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 .PHONY: help bootstrap format lint typecheck test test-unit test-property \
-	test-integration test-web synth dev verify clean simulate
+	test-integration test-contract test-web synth dev verify clean simulate
 
 UV ?= uv
 NPM ?= npm
@@ -50,9 +50,13 @@ test: ## All Python tests, with coverage, gated per package
 	@# allowed to hide an untested one behind a flattering total.
 	$(UV) run coverage report --include='packages/domain/*' --fail-under=95
 	$(UV) run coverage report --include='packages/policies/*' --fail-under=95
+	$(UV) run coverage report --include='packages/model_gateway/*' --fail-under=95
 
 simulate: ## Run the policy simulator against a fixture (FIXTURE=path)
 	$(UV) run python scripts/simulate_policy.py $(FIXTURE)
+
+test-contract: ## Opt-in contract tests against real Bedrock (costs money, needs credentials)
+	AS_BEDROCK_CONTRACT_TESTS=1 $(UV) run pytest tests/integration/test_bedrock_contract.py -m integration
 
 test-web: ## TypeScript tests across every workspace (web client and CDK)
 	$(NPM) run test --workspaces --if-present
