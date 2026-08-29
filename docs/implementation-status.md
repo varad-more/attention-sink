@@ -53,8 +53,11 @@ free, and covered by the import-boundary test, so they neither weaken nor extend
 Phase 1 surface. They are isolated in their own commit so the Phase 1 boundary can
 be recovered with a single `git reset`.
 
-They are **not** reviewed as part of Phase 1 and are **not** claimed as complete:
-they carry no dedicated unit or property tests yet, which is Phase 2 work.
+They are **not** reviewed as part of Phase 1 and are **not** claimed as complete.
+They carry no dedicated unit or property tests yet, and the coverage report says so
+plainly: 0% across all fourteen modules, holding the repository total at 21%. Writing
+those tests is the first task of Phase 2, and the number is left visible rather than
+excluded from the report so that it cannot be quietly forgotten.
 
 ## Phase 2 - Domain engine and policies
 

@@ -36,11 +36,15 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 only-include = ["packages"]
 sources = [
+    "packages/domain",
     "packages/model_gateway",
+    "packages/policies",
     "packages/protocol",
 ]
 dev-mode-dirs = [
+    "packages/domain",
     "packages/model_gateway",
+    "packages/policies",
     "packages/protocol",
 ]
 
@@ -63,7 +67,15 @@ markers = [
 
 [tool.coverage.run]
 branch = true
-source = ["packages"]
+# Each package root is named explicitly. A bare "packages" leaves modules that no
+# test imports out of the report entirely, which turns an untested package into a
+# flattering number instead of a visible gap.
+source = [
+    "packages/domain/attention_sink",
+    "packages/model_gateway/attention_sink",
+    "packages/policies/attention_sink",
+    "packages/protocol/attention_sink",
+]
 omit = ["*/__init__.py"]
 
 [tool.coverage.report]
@@ -135,7 +147,7 @@ warn_unreachable = true
 disallow_any_unimported = true
 namespace_packages = true
 explicit_package_bases = true
-mypy_path = "packages/model_gateway:packages/protocol"
+mypy_path = "packages/domain:packages/model_gateway:packages/policies:packages/protocol"
 # Add "scripts" here the moment that directory holds a module; mypy errors on an
 # empty directory, and a silently unchecked script directory is worse than that.
 files = ["packages", "tests"]
