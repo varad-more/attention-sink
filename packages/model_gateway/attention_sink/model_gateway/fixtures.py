@@ -1,108 +1,349 @@
-"""Deterministic stand-in for model calls, for local development only.
+"""Deterministic stand-ins for a model, for tests and for local development.
 
-Permitted by the project constitution solely behind explicit local configuration.
-The guard in :class:`FixtureModelGateway` is not defensive programming for its own
-sake: it is the mechanism that makes "no production endpoint silently returns mock
-data" an enforced property rather than a convention.
+Permitted by the project constitution only behind explicit local configuration, and
+gated by :func:`attention_sink.model_gateway.factory.build_gateway`, which will not
+assemble a fixture gateway for a production runtime.
+
+These are not a second gateway. :class:`FixtureInvoker` substitutes for the one class
+that speaks to a provider, and the ordinary role adapters run above it unchanged, so
+a local cycle exercises the same prompt rendering, the same blindness guard, the same
+label resolution, the same retry policy, and the same metadata as production. What
+differs is only where the bytes come from.
+
+Everything produced here is marked. Text carries ``[simulated]``, metadata carries
+``simulated=True``, and the fixture evaluator returns the null verdict of its task
+with a score of zero, so a fabricated judgement can never read as a finding.
 """
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
-from typing import Any, Literal
+import hashlib
+import math
+import re
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel
 
-from attention_sink.model_gateway.settings import ConfigurationError, RuntimeMode, RuntimeSettings
+from attention_sink.domain import HeuristicTokenCounter, content_hash
+from attention_sink.model_gateway.adapters import RawResponse
+from attention_sink.model_gateway.interfaces import EmbeddingResult, TokenCount
+from attention_sink.model_gateway.observability import CallMetadata, CallOutcome, ModelRole
+from attention_sink.model_gateway.rendering import (
+    parse_claims,
+    parse_memory_block,
+    parse_questions,
+)
+from attention_sink.model_gateway.schemas import (
+    EVALUATION_LABELS,
+    AuditOutput,
+    EmbeddingRecord,
+    EvaluationOutput,
+    EvaluationTask,
+    InterviewOutput,
+    SummaryOutput,
+    ThoughtOutput,
+)
 
-__all__ = ["FixtureFile", "FixtureModelGateway", "FixtureNotFoundError"]
+__all__ = [
+    "FIXTURE_MODEL_ID",
+    "FIXTURE_REGION",
+    "SIMULATED_PREFIX",
+    "FixtureEmbeddingProvider",
+    "FixtureInvoker",
+    "FixtureTokenCounter",
+    "FixtureUnavailableError",
+]
+
+FIXTURE_MODEL_ID = "fixture-model-v1"
+FIXTURE_REGION = "local"
+SIMULATED_PREFIX = "[simulated]"
+
+_MAX_STATEMENT = 380
+_TASK_LINE = re.compile(r"^Task: (.+)$", re.MULTILINE)
+_LIMIT_LINE = re.compile(r"^Token limit for summary_text: ([0-9]+)$", re.MULTILINE)
+_COUNTER = HeuristicTokenCounter()
+_DISCLAIMER = f"{SIMULATED_PREFIX} no model produced this."
 
 
-class FixtureNotFoundError(LookupError):
-    """No fixture exists for the requested task and key."""
+class FixtureUnavailableError(LookupError):
+    """No deterministic response is defined for the requested schema."""
 
 
-class FixtureFile(BaseModel):
-    """One task's canned responses, as stored under ``datasets/fixtures``."""
+def _clip(text: str, limit: int = _MAX_STATEMENT) -> str:
+    """Trim to a length the schemas accept, never to nothing."""
+    trimmed = " ".join(text.split())[:limit].strip()
+    return trimmed or SIMULATED_PREFIX
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
 
-    schema_version: Literal[1] = 1
-    task: str = Field(min_length=1)
-    simulated: Literal[True] = True
-    """Always true, and stored rather than assumed.
+def _fit(text: str, token_limit: int) -> str:
+    """Drop trailing words until the text fits ``token_limit`` budget tokens."""
+    words = text.split()
+    while words and _COUNTER.count(" ".join(words)) > token_limit:
+        words.pop()
+    return " ".join(words) or "none"
 
-    The flag travels with the payload, so anything that copies a fixture response
-    into an API result carries the marking with it.
+
+def _writer_response(user: str) -> dict[str, Any]:
+    memories = parse_memory_block(user)
+    digest = content_hash(user).removeprefix("sha256:")[:12]
+    cited = memories[:2]
+    spans = {ref: f"it rests on {ref}" for ref, _ in cited}
+    entry = " ".join(
+        [
+            f"{SIMULATED_PREFIX} A deterministic entry for request {digest}.",
+            f"{len(memories)} memories were in view.",
+            *(f"Here {spans[ref]}." for ref, _ in cited),
+        ]
+    )
+    return {
+        "journal_entry": entry,
+        "candidate_memory": f"{SIMULATED_PREFIX} request {digest} held {len(memories)} memories.",
+        "claimed_citations": [
+            {
+                "memory_ref": ref,
+                "supported_statement": _clip(text),
+                "journal_span": spans[ref],
+            }
+            for ref, text in cited
+        ],
+        "explicit_belief_claims": [_clip(text) for _, text in cited],
+        "uncertainty_notes": [_DISCLAIMER],
+    }
+
+
+def _auditor_response(user: str) -> dict[str, Any]:
+    memories = dict(parse_memory_block(user))
+    audited: list[dict[str, Any]] = []
+    for ref, _statement, span in parse_claims(user):
+        source = memories.get(ref, "")
+        if not source.strip():
+            audited.append({"memory_ref": ref, "support_level": "NONE", "memory_evidence_span": ""})
+            continue
+        audited.append(
+            {
+                "memory_ref": ref,
+                "support_level": "FULL",
+                # A prefix of the record, so the adapter's verbatim-evidence check
+                # passes for the same reason a real audit's would.
+                "memory_evidence_span": _clip(source, 200),
+                "entry_evidence_span": _clip(span, 200),
+            }
+        )
+    return {"audited_citations": audited, "unsupported_claims": []}
+
+
+def _summarizer_response(user: str) -> dict[str, Any]:
+    memories = parse_memory_block(user)
+    match = _LIMIT_LINE.search(user)
+    limit = int(match.group(1)) if match else 32
+    refs = [ref for ref, _ in memories]
+    body = f"{SIMULATED_PREFIX} a compressed account of {len(refs)} records."
+    return {
+        "summary_text": _fit(body, limit),
+        "source_memory_refs": refs,
+        "preserved_fact_statements": [_clip(text) for _, text in memories[:2]],
+        "omitted_fact_statements": [_clip(text) for _, text in memories[2:4]],
+        "uncertainty_statements": [_DISCLAIMER],
+    }
+
+
+def _interview_response(user: str) -> dict[str, Any]:
+    refs = [ref for ref, _ in parse_memory_block(user)][:1]
+    return {
+        "answers": [
+            {
+                "question_id": question_id,
+                "answer": f"{SIMULATED_PREFIX} a deterministic answer to {question_id}.",
+                "cited_memory_refs": refs,
+                "stated_uncertainty": _DISCLAIMER,
+            }
+            for question_id, _text in parse_questions(user)
+        ]
+    }
+
+
+def _evaluation_response(user: str) -> dict[str, Any]:
+    match = _TASK_LINE.search(user)
+    if match is None:
+        msg = "evaluation request names no task"
+        raise FixtureUnavailableError(msg)
+    task = EvaluationTask(match.group(1).strip())
+    return {
+        "task": task.value,
+        # The last verdict of every task is its null one, and the score is zero. A
+        # fixture must not be able to look like a result.
+        "label": EVALUATION_LABELS[task][-1],
+        "score": 0.0,
+        "evidence_memory_refs": [],
+        "supporting_excerpts": [_DISCLAIMER],
+    }
+
+
+_RESPONSES: Mapping[type[BaseModel], Callable[[str], dict[str, Any]]] = {
+    ThoughtOutput: _writer_response,
+    AuditOutput: _auditor_response,
+    SummaryOutput: _summarizer_response,
+    InterviewOutput: _interview_response,
+    EvaluationOutput: _evaluation_response,
+}
+
+
+@dataclass(frozen=True, slots=True)
+class FixtureInvoker:
+    """Answers any structured request deterministically, without a network.
+
+    The response is derived from the rendered request, so the same request always
+    yields the same bytes and a local run is reproducible. It reads the request back
+    with the readers in :mod:`attention_sink.model_gateway.rendering`, which is why a
+    change to how a prompt is laid out cannot leave the fake answering the old one.
     """
 
-    responses: dict[str, dict[str, Any]] = Field(min_length=1)
-
-
-class FixtureModelGateway:
-    """Serves recorded responses keyed by task and fixture key.
-
-    Deterministic by construction: the same key always yields the same bytes, which
-    makes local runs reproducible and lets tests assert on exact output without a
-    network call or an AWS account.
-    """
-
-    def __init__(self, settings: RuntimeSettings, root: Path) -> None:
-        """Bind the gateway to a fixture directory, refusing to exist in production.
-
-        Args:
-            settings: Resolved runtime settings; must be in local mode.
-            root: Directory holding ``<task>.json`` fixture files.
+    def invoke[T: BaseModel](
+        self,
+        *,
+        model_id: str,
+        system: str,
+        user: str,
+        output_model: type[T],
+        temperature: float,
+        top_p: float,
+        max_tokens: int,
+    ) -> RawResponse[T]:
+        """Return the deterministic response for ``output_model``.
 
         Raises:
-            ConfigurationError: Instantiated outside local mode, or ``root`` is not
-                a directory.
+            FixtureUnavailableError: No response is defined for that schema.
         """
-        if settings.mode is not RuntimeMode.LOCAL:
-            msg = (
-                f"fixture responses are available only in {RuntimeMode.LOCAL.value} "
-                f"mode, not {settings.mode.value}"
-            )
-            raise ConfigurationError(msg)
-        if not root.is_dir():
-            msg = f"fixture directory does not exist: {root}"
-            raise ConfigurationError(msg)
-        self._root = root
-        self._cache: dict[str, FixtureFile] = {}
+        del model_id, temperature, top_p, max_tokens  # recorded by the caller, unused here
+        build = _RESPONSES.get(output_model)
+        if build is None:
+            msg = f"no fixture response is defined for {output_model.__name__}"
+            raise FixtureUnavailableError(msg)
+        output = output_model.model_validate(build(user))
+        return RawResponse(
+            output=output,
+            stop_reason="end_turn",
+            input_tokens=_COUNTER.count(f"{system}\n\n{user}"),
+            output_tokens=_COUNTER.count(output.model_dump_json()),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class FixtureTokenCounter:
+    """The heuristic counter, wearing the exact counter's interface.
+
+    ADR-011 permits an approximate count only where no model is being called at all.
+    Its version travels on every budget it measures, so a run counted this way is
+    visibly not a run counted against a model's own tokeniser.
+    """
+
+    model_id: str = FIXTURE_MODEL_ID
+    region: str = FIXTURE_REGION
+    counter: HeuristicTokenCounter = _COUNTER
 
     @property
-    def simulated(self) -> bool:
-        """Always true. Present so callers can treat this like any other gateway."""
-        return True
+    def version(self) -> str:
+        """The heuristic counter's version, unchanged."""
+        return self.counter.version
 
-    def load(self, task: str) -> FixtureFile:
-        """Load and validate the fixture file for ``task``, caching the result.
+    def count(self, text: str) -> int:
+        """Return the budget-token cost of ``text``."""
+        return self.counter.count(text)
+
+    def count_detailed(self, text: str) -> TokenCount:
+        """Count ``text`` and report a simulated call."""
+        tokens = self.counter.count(text)
+        return TokenCount(tokens=tokens, metadata=self._metadata(tokens))
+
+    def count_request(self, *, system: str, user: str) -> TokenCount:
+        """Count both turns as one block."""
+        return self.count_detailed(f"{system}\n\n{user}")
+
+    def _metadata(self, tokens: int) -> CallMetadata:
+        return CallMetadata(
+            role=ModelRole.TOKEN_COUNTER,
+            model_id=self.model_id,
+            region=self.region,
+            outcome=CallOutcome.SUCCESS,
+            latency_ms=0,
+            retry_count=0,
+            simulated=True,
+            input_tokens=tokens,
+        )
+
+
+def _fixture_vector(text: str, dimensions: int) -> tuple[float, ...]:
+    """Expand a digest of ``text`` into a stable vector of the requested size."""
+    values: list[float] = []
+    block = 0
+    while len(values) < dimensions:
+        digest = hashlib.sha256(f"{block}:{text}".encode()).digest()
+        values.extend((byte - 127.5) / 127.5 for byte in digest)
+        block += 1
+    return tuple(values[:dimensions])
+
+
+@dataclass
+class FixtureEmbeddingProvider:
+    """Deterministic vectors, deduplicated the same way real ones are.
+
+    The vectors carry no meaning. They exist so that code which stores, deduplicates,
+    or compares embeddings can be exercised locally, and any similarity computed from
+    them is a property of SHA-256 rather than of the text.
+    """
+
+    model_id: str = FIXTURE_MODEL_ID
+    region: str = FIXTURE_REGION
+    dimensions: int = 256
+    normalize: bool = True
+    now: Callable[[], datetime] = lambda: datetime.now(UTC)
+    _cache: dict[tuple[str, str], EmbeddingRecord] = field(default_factory=dict, repr=False)
+
+    @property
+    def cached_count(self) -> int:
+        """How many distinct texts this provider has embedded."""
+        return len(self._cache)
+
+    def embed(self, text: str) -> EmbeddingResult:
+        """Embed ``text``, returning the existing record when there is one.
 
         Raises:
-            FixtureNotFoundError: No fixture file exists for the task.
+            ValueError: ``text`` is empty or whitespace.
         """
-        cached = self._cache.get(task)
+        if not text.strip():
+            msg = "refusing to embed empty text"
+            raise ValueError(msg)
+        input_hash = content_hash(text)
+        key = (self.model_id, input_hash)
+        cached = self._cache.get(key)
         if cached is not None:
-            return cached
-        path = self._root / f"{task}.json"
-        if not path.is_file():
-            msg = f"no fixture file for task {task!r} at {path}"
-            raise FixtureNotFoundError(msg)
-        fixture = FixtureFile.model_validate(json.loads(path.read_text(encoding="utf-8")))
-        self._cache[task] = fixture
-        return fixture
+            return EmbeddingResult(record=cached, deduplicated=True, metadata=self._metadata())
 
-    def respond(self, task: str, key: str) -> dict[str, Any]:
-        """Return the recorded response for ``task``/``key``.
+        vector = _fixture_vector(text, self.dimensions)
+        if self.normalize:
+            norm = math.sqrt(sum(value * value for value in vector)) or 1.0
+            vector = tuple(value / norm for value in vector)
+        record = EmbeddingRecord(
+            model_id=self.model_id,
+            dimensions=self.dimensions,
+            input_hash=input_hash,
+            vector=vector,
+            normalized=self.normalize,
+            created_at=self.now(),
+        )
+        self._cache[key] = record
+        return EmbeddingResult(record=record, deduplicated=False, metadata=self._metadata())
 
-        Raises:
-            FixtureNotFoundError: The task or the key has no recorded response.
-        """
-        fixture = self.load(task)
-        try:
-            return fixture.responses[key]
-        except KeyError as exc:
-            available = ", ".join(sorted(fixture.responses))
-            msg = f"fixture {task!r} has no key {key!r}; available keys: {available}"
-            raise FixtureNotFoundError(msg) from exc
+    def _metadata(self) -> CallMetadata:
+        return CallMetadata(
+            role=ModelRole.EMBEDDING,
+            model_id=self.model_id,
+            region=self.region,
+            outcome=CallOutcome.SUCCESS,
+            latency_ms=0,
+            retry_count=0,
+            simulated=True,
+        )
