@@ -1,8 +1,10 @@
-"""Builders and Hypothesis strategies shared by the Phase 2 test suites.
+"""Builders and Hypothesis strategies shared across the test suites.
 
 Kept in one place so that every policy is exercised against states built the same
 way. A per-file builder would let two suites drift into testing subtly different
 worlds, and the whole point of the experiment is that the arms see identical input.
+
+Test doubles for the model gateway live in ``tests/doubles.py``.
 """
 
 from __future__ import annotations
@@ -192,3 +194,40 @@ def resolve(
         )
         decision = policy.finalize_compression(working, token_budget, cycle_context, plan, summary)
     return decision, working
+
+
+# ------------------------------------------------------- gateway test material
+
+WORLD_TEXTS: tuple[str, ...] = (
+    "The lighthouse at Kerrin Point was lit each evening by my grandmother.",
+    "A storm in the third winter tore the roof from the eastern shed.",
+    "I learned to read from a book of tide tables with a cracked spine.",
+    "The ferry stopped running the year the pier was condemned.",
+    "There is a brass key in the drawer that fits nothing I have found.",
+    "My father counted the gulls each morning and wrote the number down.",
+)
+"""Plausible seed-world memories with no mechanism vocabulary anywhere in them.
+
+Deliberately not reused from :func:`build_state`, whose texts name the arm they
+belong to. Those are correct for policy tests and would be rejected by the gateway's
+blindness guard, which is the guard working.
+"""
+
+
+def world_state(
+    arm: ArmId = ArmId.ARM_FIFO, *, count: int = 3, run_id: str = RUN_ID, tokens: int = 12
+) -> MemoryState:
+    """A memory state holding ``count`` neutral seed memories, one per cycle."""
+    state = MemoryState(run_id=run_id, arm_id=arm)
+    for index in range(count):
+        state = state.admit(
+            [
+                state.mint(
+                    text=WORLD_TEXTS[index % len(WORLD_TEXTS)],
+                    token_count=tokens,
+                    memory_kind=MemoryKind.SEED,
+                    cycle=index,
+                )
+            ]
+        )
+    return state
