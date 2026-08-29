@@ -20,12 +20,25 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 BANNED_TOP_LEVEL = frozenset(
     {
+        # AWS and agent SDKs.
         "aws_cdk",
         "aws_lambda_powertools",
         "boto3",
         "botocore",
         "moto",
         "strands",
+        # Anything that can open a socket. A pure package that reached the network
+        # would make a policy decision depend on something no replay can reproduce,
+        # which is the failure this whole boundary exists to prevent.
+        "aiohttp",
+        "http",
+        "httpx",
+        "requests",
+        "socket",
+        "ssl",
+        "urllib",
+        "urllib3",
+        "xmlrpc",
     }
 )
 """Modules that must never appear below the adapter line, at any depth."""
