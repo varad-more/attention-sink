@@ -38,6 +38,12 @@ make verify      # lint, typecheck, test, and CDK synth - everything CI runs
 
 No AWS account or credentials are needed for either command, or for `make dev`.
 
+To watch the six mechanisms diverge on identical input, without a model or a network:
+
+```bash
+make simulate FIXTURE=datasets/fixtures/policy_simulator/divergence.json
+```
+
 ```bash
 make dev         # web client at http://localhost:5173, against fixture data
 ```
@@ -63,6 +69,7 @@ tests/               unit, property, integration, e2e
 ## Documentation
 
 - [Implementation status](docs/implementation-status.md) - what is built, and what is not
+- [Memory policies](docs/memory-policies.md) - the exact algorithm and tie-breaker for every arm
 - [System context](docs/architecture/system-context.md)
 - [Container view](docs/architecture/container-view.md)
 - [Architecture decision records](docs/adr/)

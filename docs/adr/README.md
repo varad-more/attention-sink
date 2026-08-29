@@ -13,3 +13,5 @@ make us revisit it. Superseded records stay in place; they are not deleted.
 | [005](005-immutable-canonical-run-and-forks.md)                       | The canonical run is immutable; exploration happens in forks   |
 | [006](006-model-ids-from-configuration.md)                            | Model identifiers and Region come from configuration           |
 | [007](007-python-backend-typescript-infrastructure-react-frontend.md) | Python backend, TypeScript infrastructure, React frontend      |
+| [008](008-budget-token-accounting.md)                                 | The budget is denominated in versioned budget tokens           |
+| [009](009-two-stage-compression.md)                                   | Compression is policy-planned and model-written, in two stages |

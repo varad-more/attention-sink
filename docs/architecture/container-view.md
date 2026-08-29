@@ -41,8 +41,8 @@ Dependencies point downward, and never back up. This is enforced by
 
 | Package         | Responsibility                                                               | Status            |
 | --------------- | ---------------------------------------------------------------------------- | ----------------- |
-| `domain`        | Memory records, active-memory state, rebalance plans, protocols              | landed early      |
-| `policies`      | The six mechanisms plus two reference arms, deterministic and pure           | landed early      |
+| `domain`        | Memories, memory state, policy decisions, lineage, configuration, ledger     | Phase 2, complete |
+| `policies`      | The six mechanisms plus two reference arms, deterministic and pure           | Phase 2, complete |
 | `protocol`      | Schema, protocol, application, and commit version identity                   | phase 1           |
 | `model_gateway` | Runtime mode, model configuration, local fixtures; later the Bedrock adapter | phase 1 (partial) |
 | `persistence`   | DynamoDB and S3 adapters, event ledger, projections                          | not created       |

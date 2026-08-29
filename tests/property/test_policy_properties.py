@@ -253,19 +253,26 @@ def test_random_draws_replay_from_their_recorded_provenance(data: st.DataObject)
 
 @GENERATED
 @given(data=st.data(), seed=st.text(alphabet="abcdef0123456789", min_size=8, max_size=32))
-def test_a_different_seed_can_change_what_the_random_arm_forgets(
+def test_any_seed_produces_a_legal_decision_that_records_that_seed(
     data: st.DataObject, seed: str
 ) -> None:
+    """Whatever the seed, the arm reaches the budget and says which seed took it there.
+
+    Deliberately not an assertion that two seeds differ. Over a small candidate pool
+    two seeds legitimately coincide, and over an equal-cost pool they can retire
+    different memories yet land on the same token total. That two seeds *can* diverge
+    is asserted on a fixed case in the unit suite, where it can be stated exactly.
+    """
     arm = ArmId.ARM_RANDOM
     state, limit = data.draw(states_and_budgets(arm))
     try:
-        a = SeededRandomPolicy().rebalance(state, limit, context(arm))
-        b = SeededRandomPolicy().rebalance(state, limit, context(arm, seed=seed))
+        decision = SeededRandomPolicy().rebalance(state, limit, context(arm, seed=seed))
     except UnsatisfiableBudgetError:
         return
-    assert (
-        len(a.retired_memory_ids) == len(b.retired_memory_ids) or a.tokens_after != b.tokens_after
-    )
+    assert limit.is_satisfied_by(decision.tokens_after)
+    if decision.random_provenance is not None:
+        assert decision.random_provenance.run_random_seed == seed
+        assert len(decision.random_provenance.draws) == len(decision.retired_memory_ids)
 
 
 @GENERATED
