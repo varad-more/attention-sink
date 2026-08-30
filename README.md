@@ -1,11 +1,10 @@
 # Attention Sink
 
-Six generative agents begin with identical seed memories, receive the same ordered
-stimuli, use the same writer model and inference settings, and operate under the
-same fixed active-memory token budget.
+Six generative agents start with the same twelve seed memories, read the same
+twenty-four stimuli in the same order, run on the same model with the same inference
+settings, and live under the same fixed active-memory budget.
 
-They differ in exactly one thing: the mechanism that decides what to forget when the
-budget is exceeded.
+One thing differs between them: what they throw away when the budget runs out.
 
 | Internal arm  | Mechanism                                             |
 | ------------- | ----------------------------------------------------- |
@@ -16,156 +15,140 @@ budget is exceeded.
 | `arm_random`  | Evict uniformly at random from a recorded seed        |
 | `arm_summary` | Compress old memories into lossy summaries            |
 
-Two optional reference arms bound the result: one that forgets nothing and one that
-remembers nothing.
+Two optional reference arms bound the result: one forgets nothing, one remembers
+nothing.
 
 ## The run
 
-One canonical run exists. `run_aws_canonical` ran twenty-four cycles on real Amazon
-Bedrock models under a frozen protocol, and the exhibition that shows it is public:
+`run_aws_canonical` ran twenty-four cycles on Amazon Bedrock under a frozen protocol.
+It is the only canonical run, and the exhibition that shows it is public:
 
 **https://d1qskxceo899me.cloudfront.net**
 
-Twenty-four cycles, six arms, 144 immutable snapshots, 157 retired memories, 18
-interviews at cycles 0, 12 and 24, and an eighteen-file dataset whose checksums verify
-with `sha256sum -c` and nothing from this repository. The six mechanisms ended holding
-9, 12, 12, 12, 11 and 13 active memories from the same 208-token budget. What that
-means, and what a single run cannot mean, is on the Methodology page.
+Six arms, 144 immutable snapshots, 157 retired memories, and interviews at cycles 0,
+12 and 24. From the same 208-token budget, the six mechanisms finished holding 9, 12,
+12, 12, 11 and 13 active memories.
 
-## What this is, and what it is not
+That is one run, one model, one seed world, no repetition. It shows the mechanisms
+diverge. It does not measure by how much, and the Methodology page says so before it
+says anything else.
 
-This is an experiment in **application-level episodic memory**: explicit memory
-records that the application supplies to a model as context. It makes no claim about
-the model's internal KV cache, attention matrices, hidden state, or experience. The
-mechanism under study is the one the application controls. See
+The dataset is eighteen files. Its `checksums.sha256` verifies with `sha256sum -c` and
+nothing else from this repository.
+
+## What this is not
+
+This studies **application-level episodic memory** — explicit records the application
+hands a model as context. It says nothing about the model's KV cache, attention
+matrices, hidden state, or experience. The mechanism under study is the one the
+application controls, which is the only one it can change. See
 [ADR-001](docs/adr/001-application-level-memory.md).
 
 ## Getting started
 
-Prerequisites: Python 3.12, Node 20.19+ or 22.12+, and [uv](https://docs.astral.sh/uv/).
+You need Python 3.12, Node 20.19+ or 22.12+, and [uv](https://docs.astral.sh/uv/).
+No AWS account, for any of this.
 
 ```bash
-make bootstrap   # install Python and Node dependencies, and the git hooks
-make verify      # lint, typecheck, test, and CDK synth - everything CI runs
+make bootstrap   # Python and Node dependencies, plus the git hooks
+make verify      # lint, typecheck, test, CDK synth - exactly what CI runs
+make dev         # web client on http://localhost:5173, against fixtures
 ```
 
-No AWS account or credentials are needed for either command, or for `make dev`.
-
-To watch the six mechanisms diverge on identical input, without a model or a network:
+To watch the six mechanisms come apart on identical input, with no model and no
+network:
 
 ```bash
 make simulate FIXTURE=datasets/fixtures/policy_simulator/divergence.json
 ```
 
-```bash
-make dev         # web client at http://localhost:5173, against fixture data
-```
-
-The client runs in **local mode** by default and says so on screen: every figure it
-shows comes from a fixture, not from a run. Production mode requires a Region and
-all five model identifiers, and refuses to start without them, so simulated output
-can never be mistaken for a result.
-
-Model access is a separate switch. `MODEL_MODE=fixture` is the default and needs no
-AWS account: it serves deterministic responses through the same typed gateway,
-prompts, and validation that production uses, and marks everything it produces as
-simulated. `MODEL_MODE=bedrock` makes real calls and fails closed without a Region
-and every model identifier. A production runtime may not run on fixtures at all.
+Two switches keep simulation from being mistaken for a result. The client runs in
+local mode by default and prints `LOCAL SIMULATION` on every page. Separately,
+`MODEL_MODE=fixture` serves deterministic responses through the same gateway, prompts
+and validation that production uses, and marks its output simulated; `MODEL_MODE=bedrock`
+makes real calls and refuses to start without a Region and all five model identifiers.
+A production runtime cannot run on fixtures at all.
 
 ```bash
-make test-contract   # opt-in checks against real Bedrock; costs money, skipped by default
+make test-contract   # real Bedrock, costs money, skipped by default
 ```
 
 ## Running the pilot
 
-The whole 24-cycle experiment runs locally, on fixtures, in about a second:
+The whole twenty-four-cycle experiment runs locally, on fixtures, in about a second:
 
 ```bash
-make pilot-validate      # do the protocol files agree, and has any validated one been edited?
-make pilot-local-run     # six arms, 24 cycles, exported to .pilot-runs/local
+make pilot-validate    # do the protocol files agree, and has a validated one been edited?
+make pilot-local-run   # six arms, 24 cycles, exported to .pilot-runs/local
 ```
 
-The export carries a `checksums.sha256` that `sha256sum -c` verifies, and everything in
-it is marked simulated, local, and non-canonical. Editing the protocol means
-`make pilot-draft`, then `make pilot-calibrate` and `make pilot-local-validate` before a
-run will start again: a run refuses draft files, and a validated file edited afterwards
-is detected rather than run.
+Everything it writes is labelled simulated, local and non-canonical, and it ships its
+own `checksums.sha256`.
 
-The pilot protocol stops at `LOCAL_VALIDATED`. It is frozen only after AWS token
-calibration, because its budget is currently denominated in a local approximate
-counter. See [docs/pilot/local-first-architecture.md](docs/pilot/local-first-architecture.md).
+Protocol `pilot-v1` is **frozen**. Its 208-token budget was calibrated against the
+writer model's own tokeniser through Bedrock, so the number means something exact
+rather than approximately. Frozen means the files refuse to change: edit one and the
+next run rejects it by digest instead of quietly running against different input. A
+new protocol is a new version — `make pilot-draft`, then calibrate, validate and
+`make pilot-freeze` — never an edit to this one.
 
-The whole application also runs persistently, on SQLite and a local HTTP server, with
-no AWS credential:
+The full application also runs persistently on SQLite and a local HTTP server, still
+with no AWS credential:
 
 ```bash
-make local-all           # empty database to verified dataset export
-make pilot-local-demo    # the whole product: database, run, API, and exhibition
+make local-all         # empty database through to a verified export
+make pilot-local-demo  # the whole product: database, run, API, exhibition
 ```
-
-The exhibition is a React client reading that API — Six Minds, the Graveyard, a
-Timeline, the checkpoint Interviews, and a Methodology page that states what the
-experiment cannot tell you. Every page is labelled `LOCAL SIMULATION`.
-
-See [docs/pilot-scope.md](docs/pilot-scope.md) for what the pilot narrows and why, and
-[docs/pilot/local-backend.md](docs/pilot/local-backend.md) for the persisted backend.
 
 ## Deploying to AWS
 
-The same domain logic, application services, API contracts, and frontend run on AWS
-behind different adapters: DynamoDB instead of SQLite, S3 instead of a directory,
-three Lambdas instead of a command line, Bedrock instead of fixtures.
+The same domain logic, services, API contracts and frontend run on AWS behind
+different adapters: DynamoDB for SQLite, S3 for a directory, three Lambdas for a
+command line, Bedrock for fixtures.
 
-**Everything deploys inert.** Execution is disabled, the schedule is disabled, and no
-environment is canonical -- in all three configurations. Arming a deployment is an
-explicit operator action against a deployed stack, never a consequence of `cdk deploy`.
+**Everything deploys inert.** Execution off, schedule off, no environment canonical, in
+all three configurations. Arming a deployment is a deliberate operator action against a
+running stack — never a side effect of `cdk deploy`.
 
 ```bash
-make aws-preflight       # account, Region, model access, and that nothing is armed
-make aws-deploy          # bundle, deploy, build the exhibition, deploy again
-make aws-bootstrap       # create the staging run: six identical seeds, cycle 0
-make aws-cycle           # one cycle, once, against real models
-make aws-schedule-inspect
-make aws-destroy         # everything, in one command
+make aws-preflight   # account, Region, model access, and that nothing is armed
+make aws-deploy      # bundle, deploy, build the exhibition, deploy again
+make aws-bootstrap   # create the run: six identical seeds, cycle 0
+make aws-cycle       # one cycle, once, against real models
+make aws-verify      # 26 invariant checks against the stored run
+make aws-destroy     # all of it, one command
 ```
 
-`make aws-smoke` runs the Bedrock smoke tests; they cost money and are skipped unless
-`ALLOW_BEDROCK_CALLS=1`. What a deployment created and how to remove it is
-[docs/pilot/aws-teardown.md](docs/pilot/aws-teardown.md); what the
-staging deployment actually proved is
-[docs/pilot/aws-staging-report.md](docs/pilot/aws-staging-report.md).
+Every resource a deployment creates, and how to remove it, is in
+[the teardown guide](docs/pilot/aws-teardown.md).
 
-## Repository layout
+## Layout
 
 ```
 apps/web/            React client
 packages/            Importable libraries; only packages/aws imports an AWS SDK
-packages/aws/        The DynamoDB and S3 adapters and the three Lambda handlers
+packages/aws/        DynamoDB and S3 adapters, and the three Lambda handlers
 infrastructure/cdk/  AWS CDK v2 application
-experiment/pilot/    The Station Kestrel protocol: seeds, stimuli, ledger, manifest
-scripts/             Local runners and the two composition roots (local_cli, aws_cli)
+experiment/pilot/    Station Kestrel: seeds, stimuli, truth ledger, frozen manifest
+scripts/             Local runners and the two composition roots
 datasets/fixtures/   Deterministic fixtures for local mode
-docs/                Architecture, methodology, operations, and decision records
+docs/                Architecture, methodology, operations, decision records
 tests/               unit, property, integration, e2e
 ```
 
 ## Documentation
 
-- [Implementation status](docs/implementation-status.md) - what is built, and what is not
-- [Memory policies](docs/memory-policies.md) - the exact algorithm and tie-breaker for every arm
-- [Model gateway](docs/model-gateway.md) - the seven model roles, prompts and their digests, schemas, failures, and metadata
-- [Pilot scope](docs/pilot-scope.md) - what the 24-cycle pilot runs, and where it narrows the production design
-- [Release readiness](docs/pilot/release-readiness-report.md) - the decision, the sixteen conditions, and the limitations
-- [Requirements traceability](docs/pilot/final-requirements-traceability.md) - every requirement and the evidence it holds
-- [AWS token calibration](docs/pilot/aws-token-calibration.md) - how the 208-token budget was derived, and against what
-- [AWS cost and usage](docs/pilot/aws-cost-and-usage-report.md) - what the canonical run actually spent
-- [AWS staging report](docs/pilot/aws-staging-report.md) - what the staging deployment proved before the canonical run
-- [AWS teardown](docs/pilot/aws-teardown.md) - every resource a deployment creates, and how to remove it
-- [System context](docs/architecture/system-context.md)
-- [Container view](docs/architecture/container-view.md)
-- [Architecture decision records](docs/adr/)
-- [Contributing](CONTRIBUTING.md)
-- [Security policy](SECURITY.md)
+Start with [memory policies](docs/memory-policies.md) for the exact algorithm and
+tie-breaker behind each arm, and the [model gateway](docs/model-gateway.md) for the
+seven model roles and their prompt digests.
+
+For the run itself: [release readiness](docs/pilot/release-readiness-report.md) has the
+decision and the limitations, [token calibration](docs/pilot/aws-token-calibration.md)
+explains where 208 came from, and [cost and usage](docs/pilot/aws-cost-and-usage-report.md)
+records what it spent.
+
+The rest — architecture views, decision records, [contributing](CONTRIBUTING.md),
+[security](SECURITY.md) — is under [`docs/`](docs/).
 
 ## Licence
 

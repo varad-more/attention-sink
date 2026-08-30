@@ -102,7 +102,7 @@ deployment in the account.
 | What                | Where                                         | Remove with                                               |
 | ------------------- | --------------------------------------------- | --------------------------------------------------------- |
 | CDK bootstrap stack | CloudFormation stack `CDKToolkit`             | `aws cloudformation delete-stack --stack-name CDKToolkit` |
-| CDK asset bucket    | `cdk-hnb659fds-assets-539247472684-us-east-1` | empty it, then delete the bootstrap stack                 |
+| CDK asset bucket    | `cdk-hnb659fds-assets-<account-id>-us-east-1` | empty it, then delete the bootstrap stack                 |
 | CDK asset ECR repo  | `cdk-hnb659fds-container-assets-…`            | deleted with the bootstrap stack                          |
 
 Only remove these if this account has no other CDK application.
