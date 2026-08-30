@@ -10,19 +10,41 @@ import { expect, test, type Page } from '@playwright/test';
 
 const MOBILE = 'mobile';
 
+/**
+ * Whether these flows are running against a deployed site rather than a local build.
+ *
+ * One assertion depends on it, and it is the one that matters most: a local build
+ * runs on fixtures and must say so, and a deployed canonical run must not, because
+ * every word on it came from a real model.
+ */
+const DEPLOYED = Boolean(process.env.E2E_BASE_URL?.trim());
+
 async function firstGraveyardEntry(page: Page) {
   await page.goto('/graveyard');
   await expect(page.getByTestId('graveyard-count')).toBeVisible();
   return page.getByTestId('graveyard-entry').first();
 }
 
-test('1-2: the landing page opens and says it is a local simulation', async ({ page }) => {
+test('1-2: the landing page opens and labels what produced it', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('heading', { level: 1 })).toContainText('Six minds');
   const banner = page.getByTestId('simulated-banner');
-  await expect(banner).toBeVisible();
-  await expect(banner).toContainText('LOCAL SIMULATION');
+  if (DEPLOYED) {
+    await expect(banner).toHaveCount(0);
+  } else {
+    await expect(banner).toBeVisible();
+    await expect(banner).toContainText('LOCAL SIMULATION');
+  }
   await expect(page.getByTestId('current-cycle')).toContainText('of 24');
+});
+
+test('1-2b: the footer states what produced the words, from the run itself', async ({ page }) => {
+  await page.goto('/');
+  const provenance = page.getByTestId('provenance');
+  await expect(provenance).toContainText('application-level episodic memory');
+  await expect(provenance).toContainText(
+    DEPLOYED ? 'real model outputs' : 'simulated model outputs',
+  );
 });
 
 test('3: all six minds can be compared at once', async ({ page }) => {

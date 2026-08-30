@@ -1,14 +1,16 @@
 /**
- * The shell every page renders inside: landmarks, navigation, and the banner.
+ * The shell every page renders inside: landmarks, navigation, banner, and footer.
  *
- * The banner is not decoration and is not dismissible. Everything this build shows
- * came from a deterministic fixture, and a reader must be told that on every page
- * rather than on the one they happened to enter through.
+ * The banner is not decoration and is not dismissible: a fixture build must say so on
+ * every page rather than on the one a reader happened to enter through. The footer
+ * carries the same duty for a build that is *not* a fixture, and reads its labels off
+ * the run instead of asserting them, because only the run knows what produced it.
  */
 
 import { NavLink, Outlet } from 'react-router-dom';
 
-import { useAppConfig } from '../context';
+import { useOnce } from '../api/hooks';
+import { useApi, useAppConfig } from '../context';
 
 interface NavItem {
   readonly to: string;
@@ -37,6 +39,39 @@ export function SimulatedBanner() {
         under an approximate token budget. Nothing here is evidence about how any model remembers.
       </span>
     </div>
+  );
+}
+
+/** How each provenance label reads to a visitor who has not read the protocol. */
+const LABEL_TEXT: Record<string, string> = {
+  LOCAL_FIXTURE: 'Local fixture build',
+  AWS_STAGING: 'Staging deployment',
+  AWS_CANONICAL: 'Canonical run',
+  CANONICAL: 'canonical',
+  NON_CANONICAL: 'non-canonical',
+  REAL_MODEL_OUTPUTS: 'real model outputs',
+  SIMULATED_MODEL_OUTPUTS: 'simulated model outputs',
+  EXACT_TOKEN_BUDGET: 'exact token budget',
+  APPROXIMATE_TOKEN_BUDGET: 'approximate token budget',
+};
+
+/**
+ * What produced the words on this page, read off the run rather than off the build.
+ *
+ * A hardcoded sentence here was wrong the moment the same code served a real run:
+ * it told visitors that model output was a local fixture. The API already derives
+ * these labels from the run's own configuration, so the footer states them and
+ * invents nothing. While they are loading it says nothing rather than guessing.
+ */
+export function Provenance() {
+  const api = useApi();
+  const labels = useOnce(() => api.provenance(), []);
+  const described = (labels.data ?? []).map((label) => LABEL_TEXT[label] ?? label);
+  return (
+    <p data-testid="provenance">
+      A controlled experiment in application-level episodic memory.
+      {described.length > 0 ? ` ${described.join(' — ')}.` : ''}
+    </p>
   );
 }
 
@@ -71,10 +106,7 @@ export function Layout() {
         <Outlet />
       </main>
       <footer className="site-footer">
-        <p>
-          A controlled experiment in application-level episodic memory. Local fixture build —
-          non-canonical, not production research results.
-        </p>
+        <Provenance />
       </footer>
     </>
   );

@@ -13,7 +13,7 @@
   },
   "application": {
     "app_version": "0.1.0",
-    "git_commit": "d5e740530600089500abc903a7c6211aac42f904"
+    "git_commit": "2ec0e08b5c3229c817e1463a3443e43834aa02e6"
   },
   "budget": {
     "calibrated_at": "2026-08-30T12:45:48.754853+00:00",
@@ -27,7 +27,7 @@
     "memory_budget_tokens": 208,
     "token_count_source": "bedrock_converse_usage"
   },
-  "content_hash": "sha256:12e28c02488e0eb9e82373305670b86791e6c53d1e2186caded08fcb750e053c",
+  "content_hash": "sha256:8e218e488c8745f427a1babd216e674da7a019860b799e5d60356a64eaa0971f",
   "inference": {
     "max_model_retries": 3,
     "request_timeout_seconds": 60,

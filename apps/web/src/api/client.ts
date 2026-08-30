@@ -86,6 +86,22 @@ export class ApiClient {
     return this.get(this.runPath);
   }
 
+  /**
+   * The run's own provenance labels, from the envelope rather than the build.
+   *
+   * The page has to say what produced the words on it, and only the run knows: a
+   * build flag can say "this is not a fixture build" and cannot say whether the run
+   * it is showing is canonical, real, or exactly counted.
+   */
+  async provenance(): Promise<string[]> {
+    const response = await fetch(this.runPath, { headers: { accept: 'application/json' } });
+    if (!response.ok) {
+      throw new ApiError(`${response.status} from ${this.runPath}`, response.status, this.runPath);
+    }
+    const body = (await response.json()) as ApiEnvelope<RunSummary>;
+    return body.labels;
+  }
+
   arms(): Promise<ArmSummary[]> {
     return this.get(`${this.runPath}/arms`);
   }

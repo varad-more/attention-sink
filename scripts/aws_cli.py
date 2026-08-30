@@ -34,7 +34,7 @@ from typing import Any
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError, NoCredentialsError
 
-from attention_sink.aws.composition import Runtime, build_runtime
+from attention_sink.aws.composition import Runtime, build_runtime, protocol_root
 from attention_sink.aws.dynamodb import DynamoRepository
 from attention_sink.aws.exports import S3ExportStorage
 from attention_sink.aws.settings import AwsSettings, DeploymentEnvironment
@@ -43,6 +43,7 @@ from attention_sink.model_gateway import (
     GatewaySettings,
     ModelMode,
 )
+from attention_sink.pilot import load_bundle
 from attention_sink.pilot.cli import (
     counter_identity,
     model_specs,
@@ -119,14 +120,10 @@ def _command_preflight(args: argparse.Namespace) -> int:
     print(f"  environment            {settings.environment.value}")
     print(f"  run                    {settings.run_id}")
     print(f"  table                  {settings.table_name if deployed else '(not deployed yet)'}")
-    if settings.environment is DeploymentEnvironment.PRODUCTION:
-        failures.append("AS_DEPLOYMENT_ENVIRONMENT is production; Phase 7 deploys staging only")
-
     print(f"  execution enabled      {settings.execution_enabled}")
     print(f"  bedrock calls allowed  {settings.allow_bedrock_calls}")
     print(f"  canonical              {settings.canonical}")
-    if settings.canonical:
-        failures.append("this deployment is marked canonical; Phase 7 creates no canonical run")
+    failures.extend(_check_protocol(settings, deployed=deployed))
 
     try:
         gateway_settings = GatewaySettings.from_env()
@@ -142,6 +139,61 @@ def _command_preflight(args: argparse.Namespace) -> int:
 
     failures.extend(_check_scheduler(settings))
     return _report(failures)
+
+
+def _check_protocol(settings: AwsSettings, *, deployed: bool) -> list[str]:
+    """Confirm the protocol is fit for what this deployment is about to be asked to do.
+
+    A non-canonical deployment needs a runnable protocol and nothing more. A canonical
+    one needs a frozen protocol, a readable canonical manifest, declared model-call
+    ceilings, and a run identifier nothing has already used -- because a canonical run
+    is created once and a second attempt on an occupied identifier would either fail
+    late or, worse, continue somebody else's run.
+    """
+    failures: list[str] = []
+    root = protocol_root()
+    try:
+        bundle = load_bundle(root)
+        bundle.require_runnable(canonical=settings.canonical)
+    except ProtocolError as exc:
+        print(f"  protocol               FAILED: {exc}")
+        return [str(exc)]
+
+    protocol = bundle.protocol
+    limits = protocol.model_call_limits
+    print(f"  protocol               {protocol.protocol_version} {protocol.status.value}")
+    print(
+        f"  budget                 {protocol.memory_budget_tokens} ({protocol.token_count_source})"
+    )
+    print(
+        f"  call limits            writer {limits.writer_calls_per_cycle}/cycle, "
+        f"summary {limits.summary_calls_per_cycle}, counts {limits.token_count_calls_per_cycle}, "
+        f"interviews {limits.interview_calls_per_checkpoint}/checkpoint, "
+        f"{limits.max_model_calls_per_run} per run"
+    )
+    if not settings.canonical:
+        return failures
+
+    try:
+        manifest = read_canonical_manifest(root)
+    except ProtocolError as exc:
+        print(f"  canonical manifest     FAILED: {exc}")
+        failures.append(str(exc))
+    else:
+        print(f"  canonical manifest     {manifest['content_hash']}")
+
+    if not deployed:
+        failures.append("a canonical run needs the deployed table; deploy the stack first")
+        return failures
+    repository = DynamoRepository(table_name=settings.table_name, client=boto3.client("dynamodb"))
+    existing = repository.get_run(settings.run_id)
+    print(f"  run identifier         {settings.run_id} {'IN USE' if existing else 'free'}")
+    if existing is not None:
+        failures.append(
+            f"{settings.run_id} already exists at cycle {existing.current_cycle}; a canonical "
+            f"run is created once and never re-created over itself"
+        )
+    return failures
 
 
 def _check_model_access(gateway_settings: GatewaySettings) -> list[str]:
@@ -376,25 +428,48 @@ def _command_schedule(args: argparse.Namespace) -> int:
         return _invoke_once(settings)
 
     wanted = "ENABLED" if args.action == "enable" else "DISABLED"
-    if wanted == "ENABLED" and not settings.execution_enabled:
+    # Read off the deployed function, not off this process. The operator shell has no
+    # AS_EXECUTION_ENABLED and never should; what decides whether a scheduled fire can
+    # do anything is the environment the function is actually running with.
+    if wanted == "ENABLED" and not _function_is_armed():
         print(
             "FAILED: the run-cycle function has AS_EXECUTION_ENABLED=false, so an "
             "enabled schedule would fire into a deployment that refuses to run. Arm "
-            "the function first.",
+            "the function first with `execution enable`.",
             file=sys.stderr,
         )
         return 1
     current = client.get_schedule(Name=name)
+    # The cadence is an operator decision at arming time, not a redeploy. A pilot
+    # watched by someone wants a cycle every few minutes; a run left alone overnight
+    # wants the deployed default. Neither is a property of the stack.
+    expression = getattr(args, "every", None) or current["ScheduleExpression"]
     client.update_schedule(
         Name=name,
         State=wanted,
-        ScheduleExpression=current["ScheduleExpression"],
+        ScheduleExpression=expression,
         ScheduleExpressionTimezone=current.get("ScheduleExpressionTimezone", "UTC"),
         FlexibleTimeWindow=current["FlexibleTimeWindow"],
         Target=current["Target"],
     )
-    print(f"{name}: {current['State']} -> {wanted}")
+    print(f"{name}: {current['State']} -> {wanted} at {expression}")
     return 0
+
+
+def _function_is_armed() -> bool:
+    """Whether the deployed run-cycle function may advance a run.
+
+    Absent configuration reads as disarmed. A schedule armed against a function whose
+    state could not be determined is exactly the case this check exists to refuse.
+    """
+    function = os.environ.get("AS_RUN_CYCLE_FUNCTION", "").strip()
+    if not function:
+        return False
+    client = boto3.Session().client("lambda")
+    configuration = client.get_function_configuration(FunctionName=function)
+    variables = configuration.get("Environment", {}).get("Variables", {})
+    armed: str = variables.get("AS_EXECUTION_ENABLED", "")
+    return armed.strip().lower() == "true"
 
 
 def _describe_schedule(client: Any, name: str) -> int:
@@ -556,6 +631,11 @@ def _parser() -> argparse.ArgumentParser:
 
     schedule = subcommands.add_parser("schedule")
     schedule.add_argument("action", choices=("inspect", "enable", "disable", "invoke-once"))
+    schedule.add_argument(
+        "--every",
+        default=None,
+        help="cadence to arm at, as a scheduler expression (default: leave it alone)",
+    )
     schedule.set_defaults(handler=_command_schedule)
 
     export = subcommands.add_parser("export")

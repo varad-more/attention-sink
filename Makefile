@@ -237,6 +237,10 @@ clean: ## Remove build, cache, and coverage artefacts
 AWS_ENV ?= staging
 CDK ?= npx cdk
 CDK_DIR ?= infrastructure/cdk
+# CDK stops for confirmation on any security-relevant change, which is the right
+# default for a human at a terminal and impossible for one without a TTY. Overridable
+# per invocation (`make aws-deploy APPROVAL=never`) rather than lowered here.
+APPROVAL ?= any-change
 STACK ?= AttentionSink-$(AWS_ENV)
 
 # The model set every AWS command uses, in one place so a deployment and the process
@@ -269,7 +273,25 @@ MODEL_ENV = AWS_REGION=$(AWS_REGION) WRITER_MODEL_ID=$(WRITER_MODEL_ID) \
 # default: a command that spends money says so on its own command line.
 BEDROCK_ENV = $(MODEL_ENV) MODEL_MODE=bedrock AS_RUNTIME_MODE=production
 
-OPERATOR ?= $(BEDROCK_ENV) $(UV) run python scripts/aws_cli.py
+# Which deployment an operator command is talking to, and which run in it. Derived
+# from AWS_ENV so that one variable selects the stack, its run, and its ceiling
+# together -- an operator pointing a command at the wrong deployment is the mistake
+# these commands are most able to make.
+AS_PILOT_RUN_ID ?= $(if $(filter production,$(AWS_ENV)),run_aws_canonical,run_aws_staging)
+
+# Read from the stack rather than repeated here, so an operator cannot point a
+# command at one deployment's run and another's table. Lazily assigned: these shell
+# out to CloudFormation, and only the AWS targets ever expand them.
+stack_output = $(shell aws cloudformation describe-stacks --stack-name $(STACK) \
+	--query "Stacks[0].Outputs[?OutputKey=='$(1)'].OutputValue" --output text 2>/dev/null)
+DEPLOY_ENV = AS_DEPLOYMENT_ENVIRONMENT=$(AWS_ENV) AS_PILOT_RUN_ID=$(AS_PILOT_RUN_ID) \
+	AS_TABLE_NAME=$(call stack_output,TableName) \
+	AS_EXPORT_BUCKET=$(call stack_output,ExportBucketName) \
+	AS_RUN_CYCLE_FUNCTION=$(call stack_output,RunCycleFunctionName) \
+	AS_API_URL=$(call stack_output,ApiUrl) \
+	AS_CLOUDFRONT_URL=$(call stack_output,CloudFrontUrl)
+
+OPERATOR ?= $(BEDROCK_ENV) $(DEPLOY_ENV) $(UV) run python scripts/aws_cli.py
 
 aws-bundle: ## Build the deployable Python package, with dependencies vendored
 	$(UV) run python scripts/build_lambda_bundle.py
@@ -287,12 +309,12 @@ aws-bootstrap-cdk: ## Bootstrap CDK in this account and Region (once per account
 # URL and the API answers the exhibition's origin, and neither exists until the stack
 # does. Pass one creates them; pass two supplies each to the other.
 aws-deploy: aws-preflight aws-bundle ## Deploy, rebuild the exhibition against the API, deploy again
-	cd $(CDK_DIR) && $(MODEL_ENV) $(CDK) deploy $(STACK) -c environment=$(AWS_ENV) --require-approval any-change
+	cd $(CDK_DIR) && $(MODEL_ENV) $(CDK) deploy $(STACK) -c environment=$(AWS_ENV) --require-approval $(APPROVAL)
 	@$(MAKE) aws-web-build
 	AS_ALLOWED_ORIGINS=$$(aws cloudformation describe-stacks --stack-name $(STACK) \
 		--query "Stacks[0].Outputs[?OutputKey=='CloudFrontUrl'].OutputValue" --output text) \
 		bash -c 'cd $(CDK_DIR) && $(MODEL_ENV) $(CDK) deploy $(STACK) -c environment=$(AWS_ENV) \
-		--require-approval any-change'
+		--require-approval $(APPROVAL)'
 	@$(MAKE) aws-outputs
 
 aws-web-build: ## Build the exhibition against the deployed API. No fixture data.
@@ -309,8 +331,12 @@ aws-outputs: ## Print the deployment outputs an operator needs
 	@aws cloudformation describe-stacks --stack-name $(STACK) \
 		--query "Stacks[0].Outputs[].[OutputKey,OutputValue]" --output table
 
-aws-bootstrap: ## Create the staging run: six identical seeds, cycle 0, nothing generated
-	$(OPERATOR) bootstrap
+# Pass `BOOTSTRAP_ARGS=--interview` to take the cycle-0 interviews at the same time.
+# Not the default: they cost six model calls, and creating a run should not spend.
+BOOTSTRAP_ARGS ?=
+
+aws-bootstrap: ## Create the deployed run: six identical seeds, cycle 0, nothing generated
+	$(OPERATOR) bootstrap $(BOOTSTRAP_ARGS)
 
 aws-status: ## Where the deployed run has got to
 	$(OPERATOR) status
@@ -330,8 +356,11 @@ aws-execution-disable: ## Disarm the deployed function
 aws-schedule-inspect: ## What the schedule is set to, and whether it is armed
 	$(OPERATOR) schedule inspect
 
+# `make aws-schedule-enable EVERY='rate(5 minutes)'` arms it at a different cadence.
+EVERY ?=
+
 aws-schedule-enable: ## Arm the schedule. Refuses unless the function is armed too.
-	$(OPERATOR) schedule enable
+	$(OPERATOR) schedule enable $(if $(EVERY),--every '$(EVERY)')
 
 aws-schedule-disable: ## Disarm the schedule
 	$(OPERATOR) schedule disable
