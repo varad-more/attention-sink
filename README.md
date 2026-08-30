@@ -118,7 +118,7 @@ make aws-destroy         # everything, in one command
 
 `make aws-smoke` runs the Bedrock smoke tests; they cost money and are skipped unless
 `ALLOW_BEDROCK_CALLS=1`. What a deployment created and how to remove it is
-[docs/pilot/aws-staging-teardown.md](docs/pilot/aws-staging-teardown.md); what the
+[docs/pilot/aws-teardown.md](docs/pilot/aws-teardown.md); what the
 staging deployment actually proved is
 [docs/pilot/aws-staging-report.md](docs/pilot/aws-staging-report.md).
 
@@ -143,7 +143,7 @@ tests/               unit, property, integration, e2e
 - [Model gateway](docs/model-gateway.md) - the seven model roles, prompts and their digests, schemas, failures, and metadata
 - [Pilot scope](docs/pilot-scope.md) - what the 24-cycle pilot runs, and where it narrows the production design
 - [AWS staging report](docs/pilot/aws-staging-report.md) - what the deployment proved, and what still blocks canonical execution
-- [AWS staging teardown](docs/pilot/aws-staging-teardown.md) - every resource a deployment creates, and how to remove it
+- [AWS teardown](docs/pilot/aws-teardown.md) - every resource a deployment creates, and how to remove it
 - [System context](docs/architecture/system-context.md)
 - [Container view](docs/architecture/container-view.md)
 - [Architecture decision records](docs/adr/)

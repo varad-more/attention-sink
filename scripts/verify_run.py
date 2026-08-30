@@ -1,15 +1,20 @@
 #!/usr/bin/env python
-"""Check a persisted local run against every invariant it claims to satisfy.
+"""Check a persisted run against every invariant it claims to satisfy.
 
-Reads the database and the export; writes nothing. Exits non-zero on the first
-failing check so it is usable as a gate, and prints every check either way so a
-passing run is as legible as a failing one.
+Reads a store and an export; writes nothing. Prints every check either way, so a
+passing run is as legible as a failing one, and exits non-zero if any fails.
 
 The checks are the scientific invariants restated as questions about stored data. A
 run that passes them is not necessarily interesting; a run that fails one is not
 evidence about anything.
 
-    python scripts/verify_local_run.py --run-id run_local_pilot [--export DIR]
+Every question is asked through the `PilotRepository` port, so the same twenty-three
+checks verify a local SQLite run and the deployed canonical one. That is the point:
+a canonical run verified by a second implementation of the checks would be verified
+against a second opinion about what the invariants mean.
+
+    python scripts/verify_run.py --run-id run_local_pilot [--export DIR]
+    python scripts/verify_run.py --source aws --run-id run_aws_canonical
 """
 
 from __future__ import annotations
@@ -21,21 +26,45 @@ from pathlib import Path
 
 from attention_sink.analysis import build_graveyard, verify_checksums
 from attention_sink.domain import MemoryKind, MemoryStatus
-from attention_sink.persistence import SqliteRepository
 from attention_sink.pilot.local import DEFAULT_DATABASE, DEFAULT_RUN_ID
 from attention_sink.pilot.protocol import DEFAULT_PROTOCOL_ROOT, load_bundle
+from attention_sink.pilot.repositories import PilotRepository
 
 Check = Callable[[], Iterator[str]]
 """A check yields one line per problem, and nothing at all when it passes."""
 
 
-def run_checks(*, database: Path, run_id: str, root: Path, export: Path | None) -> int:
+def open_repository(source: str, database: Path) -> PilotRepository:
+    """Build the store named by ``source``.
+
+    Imported inside the branch rather than at module scope so that verifying a local
+    run needs no AWS SDK and no credential, which is the property the local-first
+    override asked for and the one a laptop still relies on.
+    """
+    if source == "local":
+        from attention_sink.persistence import SqliteRepository
+
+        return SqliteRepository(database)
+
+    import os
+
+    import boto3
+
+    from attention_sink.aws.dynamodb import DynamoRepository
+
+    table = os.environ.get("AS_TABLE_NAME", "").strip()
+    if not table:
+        msg = "set AS_TABLE_NAME to the deployed table (the TableName stack output)"
+        raise SystemExit(msg)
+    return DynamoRepository(table_name=table, client=boto3.client("dynamodb"))
+
+
+def run_checks(*, repository: PilotRepository, run_id: str, root: Path, export: Path | None) -> int:
     """Run every check and report. Returns a process exit status."""
-    repository = SqliteRepository(database)
     bundle = load_bundle(root)
     run = repository.get_run(run_id)
     if run is None:
-        print(f"FAILED: no run {run_id} in {database}", file=sys.stderr)
+        print(f"FAILED: no run {run_id}", file=sys.stderr)
         return 1
 
     configuration = run.configuration
@@ -137,15 +166,31 @@ def run_checks(*, database: Path, run_id: str, root: Path, export: Path | None) 
                 gone |= {r.memory_id for r in snapshot.retired_memories}
 
     def interviews_are_read_only() -> Iterator[str]:
-        answers = {
-            str(entry["answer"])
-            for interview in repository.get_interviews(run_id)
-            for entry in interview.answers
-        }
-        for arm, state in states.items():
-            held = {memory.text for memory in state.memories}
-            if held & answers:
-                yield f"{arm} holds a memory whose text is an interview answer"
+        """An interview may never add a memory to the arm it interviewed.
+
+        Asked of provenance, not of text. A faithful answer quotes the memory it is
+        answering from, so comparing strings would flag an interview for doing its
+        job -- and it did, the first time this ran against real models. Every memory
+        an arm holds has to be traceable to something a *cycle* produced: a seed it
+        started with, a candidate a writer wrote, or a summary the Dreamer made.
+        """
+        for arm, snapshots in snapshots_by_arm.items():
+            if not snapshots:
+                continue
+            accounted = set(snapshots[0].active_memory_ids_before)
+            accounted |= {s.candidate_memory_id for s in snapshots}
+            accounted |= {
+                s.created_summary.memory_id for s in snapshots if s.created_summary is not None
+            }
+            state = states.get(arm.value)
+            if state is None:
+                continue
+            unaccounted = {m.memory_id for m in state.memories} - accounted
+            if unaccounted:
+                yield (
+                    f"{arm.value} holds {len(unaccounted)} memories no cycle produced: "
+                    f"{sorted(unaccounted)[:3]}"
+                )
 
     def graveyard_distinguishes_compression() -> Iterator[str]:
         for arm, snapshots in snapshots_by_arm.items():
@@ -186,6 +231,115 @@ def run_checks(*, database: Path, run_id: str, root: Path, export: Path | None) 
             if served - set(completed):
                 yield f"the API listed uncommitted cycles {sorted(served - set(completed))}"
 
+    def no_duplicate_snapshot() -> Iterator[str]:
+        """One snapshot per arm per cycle, and never two."""
+        for arm, snapshots in snapshots_by_arm.items():
+            seen: set[int] = set()
+            for snapshot in snapshots:
+                if snapshot.cycle in seen:
+                    yield f"{arm.value} has more than one snapshot for cycle {snapshot.cycle}"
+                seen.add(snapshot.cycle)
+
+    def checkpoint_interviews_exist() -> Iterator[str]:
+        """Six interviews at every checkpoint the run has reached."""
+        interviews = repository.get_interviews(run_id)
+        by_cycle: dict[int, set[str]] = {}
+        for interview in interviews:
+            by_cycle.setdefault(interview.cycle, set()).add(interview.arm_id.value)
+        for checkpoint in configuration.checkpoint_cycles:
+            if checkpoint > run.current_cycle:
+                continue
+            arms = by_cycle.get(checkpoint, set())
+            if len(arms) != len(configuration.arms):
+                yield f"checkpoint {checkpoint} has {len(arms)} interviews, not six"
+
+    def analysis_is_complete() -> Iterator[str]:
+        """Analysis has covered every committed cycle, and produced all four metrics.
+
+        Asked of the analysis status rather than of the metric rows. Which cycles
+        carry a metric row is a property of the metric -- a Graveyard Echo exists at
+        the cycle a memory was retired, not at every cycle -- while the status is the
+        analysis's own record of what it looked at.
+        """
+        status = repository.get_analysis_status(run_id, analysis_name="all")
+        if status is None:
+            yield "the run has no analysis status; nothing has been scored"
+            return
+        uncovered = sorted(set(completed) - set(status.completed_cycles))
+        if uncovered:
+            yield f"analysis has not covered cycles {uncovered[:5]}"
+        names = {metric.metric_name for metric in repository.get_metrics(run_id)}
+        for required in ("origin_recall", "identity_drift", "contradiction_rate"):
+            if required not in names:
+                yield f"the run has no {required} metric"
+        # An echo is a new memory measured against what its arm could no longer see,
+        # so it needs a retirement in a *strictly earlier* cycle than some snapshot.
+        # Before that the absence of the metric is the correct answer, not a failure:
+        # nothing has been forgotten long enough for anything to echo it.
+        echoable = any(
+            snapshot.cycle > retirement
+            for snapshots in snapshots_by_arm.values()
+            for retirement in {s.cycle for s in snapshots if s.retired_memories}
+            for snapshot in snapshots
+        )
+        if echoable and not any(name.startswith("graveyard_echo") for name in names):
+            yield f"a memory was retired before a later cycle but no echo was measured: {sorted(names)}"
+
+    def checkpoint_analysis_exists() -> Iterator[str]:
+        """Divergence, contradiction, and both identity metrics at every checkpoint."""
+        reached = [c for c in configuration.checkpoint_cycles if c <= run.current_cycle]
+        metrics = repository.get_metrics(run_id)
+        for checkpoint in reached:
+            at = {m.metric_name for m in metrics if m.cycle == checkpoint}
+            for required in ("origin_recall", "identity_drift", "contradiction_rate"):
+                if required not in at:
+                    yield f"checkpoint {checkpoint} has no {required}"
+        divergence = repository.get_analysis_artifact(run_id, name="divergence") or {}
+        matrices = divergence.get("matrices", {})
+        for checkpoint in reached:
+            if str(checkpoint) not in matrices:
+                yield f"checkpoint {checkpoint} has no pairwise divergence matrix"
+        for name in ("echoes", "contradictions", "question_scores"):
+            if repository.get_analysis_artifact(run_id, name=name) is None:
+                yield f"the run has no {name} artefact"
+
+    def model_usage_stays_within_its_limits() -> Iterator[str]:
+        """What the run spent, against the ceilings the protocol declared."""
+        limits = configuration.model_call_limits
+        usage = run.usage
+        if usage.total_calls > limits.max_model_calls_per_run:
+            yield f"{usage.total_calls} calls against a ceiling of {limits.max_model_calls_per_run}"
+        cycles = len(completed)
+        expectations = {
+            "writer": limits.writer_calls_per_cycle * cycles,
+            "token_counter": limits.token_count_calls_per_cycle * cycles,
+            "summarizer": limits.summary_calls_per_cycle * cycles,
+        }
+        for role, ceiling in expectations.items():
+            spent = usage.calls_by_role.get(role, 0)
+            if spent > ceiling:
+                yield f"{spent} {role} calls over {cycles} cycles, above the {ceiling} allowed"
+
+    def graveyard_covers_every_eviction() -> Iterator[str]:
+        """Nothing an arm retired is missing from the record of what it lost."""
+        for arm, snapshots in snapshots_by_arm.items():
+            retired = {r.memory_id for s in snapshots for r in s.retired_memories}
+            recorded = {entry.memory_id for entry in build_graveyard(run_id, snapshots)}
+            missing = retired - recorded
+            if missing:
+                yield f"{arm.value} retired {len(missing)} memories the graveyard does not hold"
+
+    def compression_records_are_distinct() -> Iterator[str]:
+        """A summary is one memory, written once, from parents named once."""
+        for arm, snapshots in snapshots_by_arm.items():
+            summaries = [s.created_summary for s in snapshots if s.created_summary is not None]
+            ids = [summary.memory_id for summary in summaries]
+            if len(ids) != len(set(ids)):
+                yield f"{arm.value} wrote the same summary identifier twice"
+            for summary in summaries:
+                if len(set(summary.parent_memory_ids)) != len(summary.parent_memory_ids):
+                    yield f"{arm.value} summary {summary.memory_id} names a parent twice"
+
     def export_checksums_pass() -> Iterator[str]:
         if export is None:
             return
@@ -212,6 +366,13 @@ def run_checks(*, database: Path, run_id: str, root: Path, export: Path | None) 
         ("metric evidence resolves", metric_evidence_resolves),
         ("every seed is accounted for", seeds_are_present),
         ("no future stimuli through the API", no_future_stimuli_through_the_api),
+        ("no duplicate snapshot", no_duplicate_snapshot),
+        ("checkpoint interviews exist", checkpoint_interviews_exist),
+        ("analysis is complete", analysis_is_complete),
+        ("checkpoint analysis exists", checkpoint_analysis_exists),
+        ("model usage stays within its limits", model_usage_stays_within_its_limits),
+        ("graveyard covers every eviction", graveyard_covers_every_eviction),
+        ("compression records are distinct", compression_records_are_distinct),
         ("export checksums pass", export_checksums_pass),
     )
 
@@ -239,12 +400,16 @@ def main() -> int:
     """Parse arguments and verify one run."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=DEFAULT_PROTOCOL_ROOT)
+    parser.add_argument("--source", choices=("local", "aws"), default="local")
     parser.add_argument("--database", type=Path, default=DEFAULT_DATABASE)
     parser.add_argument("--run-id", default=DEFAULT_RUN_ID)
     parser.add_argument("--export", type=Path, default=None)
     args = parser.parse_args()
     return run_checks(
-        database=args.database, run_id=args.run_id, root=args.root, export=args.export
+        repository=open_repository(args.source, args.database),
+        run_id=args.run_id,
+        root=args.root,
+        export=args.export,
     )
 
 

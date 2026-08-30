@@ -73,7 +73,7 @@ def test_a_row_of_the_wrong_width_is_refused_rather_than_silently_padded():
         "run_local_fixture_cycle",
         "run_local_fixture_experiment",
         "run_local_scheduler",
-        "verify_local_run",
+        "verify_run",
         "local_cli",
     ],
 )

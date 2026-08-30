@@ -311,7 +311,7 @@ anything, and no AWS service is called.
   `GET`. Prepared cycles, future stimuli, evaluator notes, and prompt text are
   filtered out; prompt versions and hashes are published.
 - `scripts/local_cli.py` (the composition root), `scripts/run_local_scheduler.py`,
-  and `scripts/verify_local_run.py`.
+  and `scripts/verify_run.py`.
 - `make local-db-migrate`, `local-run-create`, `local-cycle`, `local-status`,
   `local-scheduler`, `local-api`, `local-analyze`, `local-export`, `local-verify`,
   `local-reset-demo`, and `local-all`.
@@ -329,7 +329,7 @@ The 24-cycle SQLite run, executed end to end by `make local-all`:
 - 252 metric rows, 116 Graveyard entries, 102 echo measurements, 180 contradiction
   classifications, and divergence matrices at all three checkpoints.
 - The export writes sixteen files plus `checksums.sha256`; all sixteen verify.
-- `scripts/verify_local_run.py` passes all sixteen checks.
+- `scripts/verify_run.py` passes all sixteen checks.
 
 ### Important decisions
 
@@ -478,7 +478,7 @@ services still hold the ports Phase 5 defined, and `PilotService` and
 - `scripts/build_lambda_bundle.py`, which builds the deployment package as its own
   inspectable step so that `cdk synth` needs neither Docker nor a network.
 - ADR-012, and `docs/pilot/aws-staging-report.md` and
-  `docs/pilot/aws-staging-teardown.md`.
+  `docs/pilot/aws-teardown.md`.
 
 ### Verified results
 

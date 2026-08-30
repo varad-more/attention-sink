@@ -15,7 +15,7 @@ SHELL := /bin/bash
 	pilot-local-demo pilot-local-web pilot-local-e2e pilot-local-build pilot-local-release-check \
 	aws-bundle aws-bundle-fast aws-preflight aws-bootstrap-cdk aws-deploy aws-web-build \
 	aws-status aws-cycle aws-schedule-inspect aws-schedule-enable aws-schedule-disable \
-	aws-invoke-once aws-export aws-smoke aws-destroy aws-outputs aws-bootstrap \
+	aws-invoke-once aws-export aws-smoke aws-destroy aws-outputs aws-bootstrap aws-verify \
 	aws-execution-inspect aws-execution-enable aws-execution-disable
 
 UV ?= uv
@@ -157,7 +157,7 @@ local-export: ## Write the complete dataset export and its checksums
 	$(LOCAL) --database $(LOCAL_DB) --run-id $(LOCAL_RUN) export --out $(LOCAL_EXPORT)
 
 local-verify: ## Check a persisted run against every invariant it claims
-	$(UV) run python scripts/verify_local_run.py --database $(LOCAL_DB) \
+	$(UV) run python scripts/verify_run.py --database $(LOCAL_DB) \
 		--run-id $(LOCAL_RUN) --export $(LOCAL_EXPORT)
 
 local-reset-demo: ## Delete the local run. Refuses anything that is not LOCAL_FIXTURE
@@ -370,6 +370,10 @@ aws-invoke-once: ## Fire the deployed run-cycle function once, exactly as the sc
 
 aws-export: ## Write the complete dataset to the export bucket
 	$(OPERATOR) export
+
+aws-verify: ## Check the deployed run against every invariant it claims to satisfy
+	$(DEPLOY_ENV) $(UV) run python scripts/verify_run.py --source aws \
+		--run-id $(AS_PILOT_RUN_ID) $(if $(EXPORT_DIR),--export $(EXPORT_DIR))
 
 aws-smoke: ## Real Bedrock smoke tests. Costs money. Needs ALLOW_BEDROCK_CALLS=1.
 	ALLOW_BEDROCK_CALLS=1 $(BEDROCK_ENV) $(UV) run pytest tests/smoke -m smoke -v
