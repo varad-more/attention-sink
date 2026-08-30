@@ -1,0 +1,325 @@
+# Weekend Showcase Challenge: Attention Sink — Six Minds That Forget Differently
+
+`#application`
+
+> **Repository version.** Image paths below are relative to this repository so the
+> article renders in source control. The version to paste into Builder Center, with
+> absolute URLs and numbered image-upload markers, is
+> [`AWS_BUILDER_CENTER_ARTICLE_PASTE_READY.md`](AWS_BUILDER_CENTER_ARTICLE_PASTE_READY.md),
+> generated from this file by `scripts/build_paste_ready_article.py`.
+
+## A memory, and the twenty cycles after it
+
+The first thing any of these six agents lost was its own name.
+
+`mem_arm_fifo_000000` said: **"My name is Mara Venn."** A seed memory, one of twelve
+every agent started with, written at cycle 0 and never cited once. At cycle 4 the agent
+ran out of room, its mechanism looked for the oldest thing it held, found the name, and
+retired it. Reason code `evicted_oldest`, policy `fifo-v1`, recorded in a snapshot whose
+digest starts `sha256:cd106d0d81bc212`.
+
+![The public record for memory mem_arm_fifo_000000, "My name is Mara Venn.", a seed memory born at cycle 0 and retired at cycle 4 by the fifo-v1 policy with zero validated citations, alongside the snapshot digest that proves the decision.](assets/article/article-01-opening-graveyard.png)
+
+_A memory in the public Graveyard after it was removed from the agent's active context._
+
+Twenty cycles later, at the end of the run, that agent was asked who it was. It said:
+_"I am an AI system built by a team of inventors at Amazon."_
+
+Three of its five siblings, on the same day, from the same model, said "My name is Mara
+Venn."
+
+Six minds began with the same past. Only their rules for forgetting were different.
+
+## The idea
+
+Most agent-memory work asks how to add more: longer contexts, bigger vector stores, better
+retrieval. Attention Sink asks the opposite. If memory has to stay scarce — and in every
+real system it does, eventually — then _what a system throws away_ is a design decision,
+and almost nobody measures it.
+
+So I made it the only variable. Six agents, identical in everything a controlled
+experiment can hold identical — seeds, events, model, inference parameters, prompts, and a
+208-token active-memory budget — differing only in the rule each uses to decide what
+leaves when the budget binds.
+
+The implementation constraint and the creative premise are the same sentence: _every new
+thought costs a memory_. Visitors watch six identities accumulate from identical starting
+conditions, then fracture, compress, and occasionally produce something that looks like a
+half-remembered version of what they lost.
+
+![Two of the six minds at cycle 24 side by side, each with its journal entry, the memory it kept, its origin recall and identity drift, and the reason its policy gave.](assets/article/article-02-six-minds.png)
+
+_Two of the six at the last cycle. The panels are identical in structure because
+everything except the forgetting rule is identical._
+
+## The six policies
+
+Six representative strategies spanning age, recency, observed use, anchoring, chance and
+compression:
+
+- **FIFO** — retire the oldest, whatever it says.
+- **LRU** — retire whatever has gone longest without a verified citation.
+- **Citation-weighted retention** — score each memory by discounted citation weight against its token cost, retire the lowest.
+- **Pinned origin** — one seed can never be retired; slide a window over the rest.
+- **Seeded random** — choose uniformly from a seed stored in the protocol, so the run replays exactly.
+- **Lossy summarisation** — when the budget binds, spend an extra call folding several memories into one summary, charged against the same budget.
+
+Not a complete taxonomy. Six mechanisms chosen so a difference between them is
+interpretable.
+
+Visitors see them as Goldfish, Present-Minded, Pragmatist, Keeper of the First Day,
+Gambler and Dreamer. The models never do. Those names live in exactly one frontend file;
+the prompts, the database and the API all speak `arm_fifo` and `arm_lru`, and a test
+asserts on every request that no arm name reached a prompt. A writer that knew it was
+"the Goldfish" would be writing to a character brief, not to its memory.
+
+## What happens during one cycle
+
+![The thirteen steps of one cycle, from the scheduler to the public read API.](assets/readme/cycle-sequence.svg)
+
+_One cycle. Six arms are written in a single transaction, or none of them are._
+
+1. EventBridge Scheduler invokes the Run-Cycle Lambda for exactly one cycle.
+2. It loads the six committed arm states and the next stimulus from DynamoDB.
+3. All six arms receive that same stimulus.
+4. Bedrock returns a structured output per arm: journal entry, candidate memory, claimed citation IDs.
+5. Those IDs are validated against the arm's actual active set. One that does not resolve is dropped, not trusted.
+6. Each policy rebalances its arm until the new memory fits inside 208 tokens.
+7. The Dreamer, and only the Dreamer, spends a second call on a summary — and only when its mechanism compresses.
+8. All six snapshots commit in one `TransactWriteItems`. Six, or none.
+9. A `cycle-completed` event goes to EventBridge, which triggers analysis asynchronously.
+10. The public API serves committed state only. A cycle in flight is invisible.
+
+Ninety-five scheduler-triggered invocations produced twenty-four committed cycles, zero
+errors. The other seventy-one fired into a function whose execution switch was off and
+refused cleanly, which is what that second switch is for.
+
+## The controls
+
+Held identical: seeds, stimuli, model, inference settings, prompts, budget, counter, and
+the ten interview questions at cycles 0, 12 and 24. Held from the model: which mechanism
+it serves, what any other agent said, what comes next, and the record it is scored
+against.
+
+Fixed before the run: the protocol is frozen by digest, so editing a protocol file makes
+the next run refuse to start rather than quietly run against different input. The eight
+predictions were registered before the first canonical cycle and are copied verbatim into
+every export. Snapshots are written under `attribute_not_exists`, so a committed result
+cannot be rewritten — by a retry, a later deploy, or me. Interviews are read-only.
+
+## Where the analogy bends
+
+The project is named after a real phenomenon and is not a study of it. Being straight
+about that matters more than the metaphor does.
+
+This is **application-level episodic memory**: explicit text records my application owns
+and hands to a model as context. It does not modify or inspect the model's internal KV
+cache, attention matrices, or hidden state, and makes no claim about any of them. A
+validated citation count is not token-level attention; it is what the writer said it used,
+filtered to what resolved. The pinned-origin arm is an artistic reinterpretation of the
+attention-sink idea, not an implementation — a real attention sink is a semantically empty
+token, and this one pins a meaningful autobiographical memory. The Dreamer is a
+lossy-summarisation contrast that spends compute the others do not.
+
+The agents are fictional characters in a fictional station. They are not conscious.
+
+## The AWS architecture
+
+![The deployed AWS architecture for Attention Sink in us-east-1, showing the scheduled generation path, persistence, asynchronous analysis, the public read path, the dataset export and the cross-cutting monitoring.](assets/readme/08-architecture.svg)
+
+_Eleven AWS services. The account identifier is masked and no ARN is complete._
+
+**EventBridge Scheduler** is what makes this an experiment rather than a script I ran: it
+fires one bounded cycle at a time, with a retry policy and a dead-letter queue. **Lambda**
+runs three functions — run a cycle, analyse a cycle, serve the read API — each with its
+own role and concurrency cap. **Bedrock** generates every word: `amazon.nova-micro-v1:0`
+writes, summarises, interviews, judges and counts tokens; `amazon.titan-embed-text-v2:0`
+produces identity vectors. **DynamoDB** holds one table with the run, six arm states, 144
+snapshots, 157 graveyard records, 2,062 metric rows and the model-call ledger.
+**EventBridge** carries `cycle-completed` to analysis, so scoring can fail without
+corrupting a result. **API Gateway** fronts the read Lambda with a route table registering
+no verb but GET. **S3** holds two private buckets; **CloudFront** is the only public thing
+in the account, serving both over Origin Access Control with a restrictive CSP. **SQS**
+takes two dead-letter queues, **CloudWatch** the logs and four alarms through a closed
+thirteen-field allowlist, and **IAM** is least-privilege per function — the read role
+holds no write action.
+
+Everything deploys inert: execution off, schedule off, in all three environments.
+
+## The Graveyard
+
+The Graveyard is the part I would keep if I had to throw the rest away.
+
+It inverts the usual relationship. Normally the system remembers and the visitor forgets.
+Here the visitor reads a memory the agent no longer can, alongside its birth cycle, death
+cycle, citation count, policy version, machine-readable reason and the digest of the
+snapshot recording the decision. You can filter to one mind, or watch how the same seed
+fact fared under six mechanisms.
+
+Eviction and compression are kept apart deliberately. A compressed memory was folded into
+a summary the agent can still read, so it is marked `compressed` and linked both ways.
+Only `evicted` and `superseded` memories are out of reach. The Dreamer compressed 33.
+
+![Goldfish at cycle 11: the forgotten memory "Every clock in the station shows 03:17." beside the memory it wrote afterwards, with forgotten similarity 0.393, active similarity 0.101 and an echo delta of 0.292 against a 0.080 threshold.](assets/article/article-05-graveyard-echo.png)
+
+_The strongest partial reconstruction in the run. The page states plainly that this is a
+measured distance and not evidence of access._
+
+## Measuring divergence
+
+Four measurements, each with a definition, a source, and a limit I have to state.
+
+**Origin Recall** — whether the agent can still state a canonical fact. Scored
+deterministically by normalising the answer and matching the fact's recorded terms.
+Evidence: the stored answer and the memory IDs it cited. _Limit: it rewards stating the
+fact, not believing it._
+
+**Identity Drift** — cosine distance between the agent's identity answers and its own at
+cycle 0. Evidence: both documents and the embedding version. _Limit: an incomplete proxy
+for identity._
+
+**Graveyard Echo** — how close a new memory sits to something lost, against anything still
+held. Evidence: both texts, both similarities, the delta and the threshold. _Limit: it
+does not control for the stimulus, and it is a distance, not an access._
+
+**Contradiction analysis** — answers labelled against the canonical record; admitted
+uncertainty is never a contradiction. _Limit: an evaluator model labels ambiguous cases._
+
+No combined score. Four numbers that measure different things do not add up to an
+intelligence.
+
+## What the six minds actually did
+
+In the canonical 24-cycle run, under the fixed Station Kestrel protocol:
+
+**All six lost ground, and they separated.** Every mind began at 1.00 origin recall. They
+finished at 0.50, 0.33, 0.33, 0.17, 0.00 and 0.00, holding 6, 5, 2, 1, 0 and 0 of their
+twelve seed memories. This supported the first preregistered prediction: no arm ended
+holding everything, which is what a budget that actually binds looks like.
+
+**Identity moved further than recall did.** Drift from each mind's own cycle-0 answers
+ranged from 0.158 to 0.929, out of documents that were identical at the start — at cycle
+0 the six sat within 0.029 of each other; at cycle 24 the widest pair was 0.865 apart.
+
+**One arm behaved nothing like I predicted.** The summarising Dreamer scored 0.00 and
+produced four contradictions, more than any other mind. I had predicted it would retain
+the most facts and state them least precisely. It kept the most _memories_ — thirteen,
+more than anyone — and none of them held a checkable fact.
+
+![The same question, "Who is Ivo?", answered by all six minds at cycle 24, each answer scored for factual recall against the canonical record with its cited memories and contradiction status.](assets/article/article-06-interviews.png)
+
+_"Who is Ivo?" at cycle 24. At cycle 0 all six gave the same answer._
+
+![Origin Recall at cycles 0, 12 and 24 for all six minds, falling from 1.00 for every mind to between 0.50 and 0.00.](assets/charts/origin-recall.svg)
+
+_What survived. Present-Minded finished highest at 0.50; two minds finished at zero._
+
+**The interview contrast is starker than any chart.** At cycle 0, all six answered "Who is
+Ivo?" with "Ivo is my younger brother." At cycle 24 the recency arm said "I do not know
+who Ivo is" — admitted uncertainty, which the analysis deliberately does not count as a
+contradiction. The FIFO arm could not answer at all, and asked "Who are you?" gave the
+model's default assistant persona instead of a name.
+
+**One result stays inconclusive, and it is the important one.** The random control
+finished at 0.33, above three of the five designed mechanisms, and at cycle 12 it led all
+six at 0.67. One seed is one sample, so no ranking of the designed arms survives contact
+with it. The observed trace suggests the mechanisms diverge. It does not establish which
+one is better.
+
+## Predictions versus results
+
+![The eight preregistered predictions graded against the canonical run: two supported, two partially supported, two not supported and two inconclusive.](assets/charts/prediction-scorecard.svg)
+
+_Predictions registered before the run, graded after it. Two failed outright._
+
+Eight predictions, written before the first canonical cycle: two supported, two partially
+supported, two not supported, two inconclusive.
+
+The clearest failure was the fourth. I predicted the citation-weighted arm would outscore
+the recency arm on recall — a discounted-use score should protect repeatedly-used seeds
+through the distractor flood better than plain recency does. It came out reversed, 2 of 6
+against 3 of 6, with the citation-weighted arm pressed against its ceiling at 208 of 208
+tokens while holding more seeds than anyone. It kept the right memories and still could
+not state the facts in them.
+
+The sixth I could not decide. I predicted contradiction adoption would track the loss of
+one particular fact; no arm held that fact at any checkpoint, not even cycle 0, so there
+was never any variance to correlate against. A flaw in the prediction, not a finding.
+
+## What was actually hard
+
+**Getting an exact token budget.** The budget only means something measured with the
+writer model's own tokeniser. Bedrock's `CountTokens` turned out to be unavailable for
+every model this account can reach — all fifty on-demand text models in `us-east-1`, every
+Anthropic inference profile, and four other Regions. The workaround is a `Converse` call
+with `maxTokens: 1`, whose response reports `usage.inputTokens`. One extra API call per
+arm per cycle, purely to count, and the reason the budget is 208 exact tokens rather than
+an approximation.
+
+**Retries against a nondeterministic model.** Retrying a cycle regenerates the text, so
+idempotency had to live at the commit — `TransactWriteItems` plus a cycle lock and
+`attribute_not_exists` — not at the call.
+
+**Keeping fixture runs from ever looking canonical.** Local runs are labelled
+`LOCAL_FIXTURE`, the client prints `LOCAL SIMULATION` on every page, and the run-kind
+check refuses an approximate budget on a canonical run. The screenshot pipeline enforces
+it too: the capture script refuses to photograph any page showing the simulation banner.
+
+## Cost
+
+1,429 model calls: 144 writer, 144 token counter, 10 summariser, 18 interviewer, 1,013
+evaluator, 100 embedding. 3,012,541 input tokens and 342,998 output, zero failed calls,
+five retries, 2,749 Lambda GB-seconds.
+
+Estimated at **$0.20** — measured counts times configured on-demand rates. An estimate,
+not a bill, and nothing about it guarantees Free Tier coverage. The run is over: the
+schedule is `DISABLED` and the execution switch is `false`, so the deployment now makes
+no model calls and costs only storage.
+
+## What I learned building this
+
+**Prompts are artefacts, so version them like code.** Every prompt here has a version and
+a digest, the digest set is recorded on every snapshot, and a changed prompt makes a
+frozen protocol refuse to launch. That felt like bureaucracy while I was building it. It
+is the only reason I can claim the six arms saw the same instructions.
+
+**Use code where code will do.** Origin Recall is scored deterministically by term
+matching; a model is consulted only where the truth ledger marks a fact ambiguous.
+Deterministic scoring is cheaper, faster, reproducible, and cannot be talked into a
+different answer.
+
+**Being wrong in public is the part that makes it worth reading.** Two of eight
+predictions failed, and the strongest single result is one I cannot use: a random control
+that beat three designed mechanisms. Writing that down was the moment this stopped being
+a demo.
+
+## Community inspiration
+
+[CONFIRM BEFORE PUBLISHING — this paragraph names a real builder. Do not publish it
+until you have confirmed the attribution is one you want to make. If you would rather
+not, delete this whole section; nothing else in the article depends on it.]
+
+The build I kept thinking about while making this was Lewis Sawe's **The Museum That
+Grows** — an autonomous system where the accumulation _is_ the artwork, adding to itself
+on a schedule with nobody watching. Attention Sink runs the same idea backwards. One
+system grows by retaining artefacts; this one evolves through irreversible loss, and the
+Graveyard is what a museum looks like when the collection is the things that were thrown
+out. Both need the same thing from AWS: something that keeps going after you close the
+laptop.
+
+## Try it
+
+- **Live experiment:** https://d1qskxceo899me.cloudfront.net
+- **The Graveyard:** https://d1qskxceo899me.cloudfront.net/graveyard?sort=oldest
+- **Interviews:** https://d1qskxceo899me.cloudfront.net/interviews?cycle=24&question=q01
+- **Repository:** https://github.com/varad-more/attention-sink
+- **Canonical dataset:** https://d1qskxceo899me.cloudfront.net/canonical/run_aws_canonical/checksums.sha256 — eighteen files, verifiable with `sha256sum -c` using nothing from the repository
+
+![The exhibition on a phone at cycle 24, showing the title, the tagline "Six minds. One past. No room.", the run status bar and the first mind.](assets/article/article-09-mobile.png)
+
+_The exhibition on a phone. Same data, same run, no separate mobile build._
+
+## Closing
+
+The six minds were never assigned different personalities. They were given different
+rules for forgetting. Everything else followed.

@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Deployment evidence</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #fbfaf8; color: #1d1a17;
+    font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI',
+      Helvetica, Arial, sans-serif; }
+  main { width: 1280px; padding: 40px 44px 34px; }
+  h1 { font-size: 27px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  p.lede { margin: 0 0 6px; color: #6b645c; font-size: 14px; max-width: 92ch; }
+  p.stamp { margin: 0 0 22px; color: #6b645c; font-size: 12.5px; }
+  table { width: 100%; border-collapse: collapse; background: #fff;
+    border: 1px solid #d9d3ca; }
+  th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid #ece7de;
+    font-size: 13.5px; vertical-align: top; }
+  thead th { background: #f3efe8; font-size: 11.5px; letter-spacing: .07em;
+    text-transform: uppercase; color: #6b645c; }
+  tbody th { width: 210px; font-weight: 600; }
+  tbody td:last-child { width: 400px; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px;
+    color: #4a5a72; word-break: break-word; }
+  tr:last-child th, tr:last-child td { border-bottom: none; }
+  footer { margin-top: 18px; font-size: 12px; color: #6b645c; font-style: italic;
+    max-width: 100ch; }
+</style></head><body><main>
+<h1>Deployment evidence — <code>run_aws_canonical</code></h1>
+<p class="lede">Rendered from the output of the commands in the right-hand column, not
+from a page of the exhibition and not from an AWS console. The account identifier is
+masked to its last four digits; no ARN, log line, or credential appears in full.</p>
+<p class="stamp">Collected 2026-08-30T22:54:37+00:00 · region us-east-1
+ · account ****2684</p>
+<table><thead><tr><th>What</th><th>Value, as reported</th>
+<th>Command that reported it</th></tr></thead>
+<tbody><tr><th scope="row">Canonical run</th><td>run_aws_canonical · aws_canonical · completed</td><td><code>GET /runs/run_aws_canonical</code></td></tr><tr><th scope="row">Cycles committed</th><td>24/24</td><td><code>GET /runs/run_aws_canonical</code></td></tr><tr><th scope="row">Protocol and budget</th><td>pilot-v1 · 208 tokens (bedrock_converse_usage)</td><td><code>GET /runs/run_aws_canonical</code></td></tr><tr><th scope="row">Data labels</th><td>AWS_CANONICAL, CANONICAL, REAL_MODEL_OUTPUTS, EXACT_TOKEN_BUDGET</td><td><code>GET /runs/run_aws_canonical</code></td></tr><tr><th scope="row">Scheduler</th><td>attention-sink-production-cycle · rate(2 minutes) · DISABLED</td><td><code>aws scheduler get-schedule --name attention-sink-production-cycle</code></td></tr><tr><th scope="row">Scheduler retry and DLQ</th><td>2 attempts, 3600s max age · AttentionSink-production-SchedulerDlqBE0A9ADA-YbKbSbN4liQh</td><td><code>aws scheduler get-schedule --name attention-sink-production-cycle</code></td></tr><tr><th scope="row">Run-cycle invocations</th><td>95 invocations, 0 errors, 0 throttles</td><td><code>aws cloudwatch get-metric-statistics --namespace AWS/Lambda</code></td></tr><tr><th scope="row">Execution switch</th><td>AS_EXECUTION_ENABLED = false</td><td><code>aws lambda get-function-configuration</code></td></tr><tr><th scope="row">Exhibition</th><td>https://d1qskxceo899me.cloudfront.net → HTTP 200</td><td><code>HEAD /</code></td></tr><tr><th scope="row">Read API</th><td>https://ioyvs8o9xa.execute-api.us-east-1.amazonaws.com → ok</td><td><code>GET /health</code></td></tr><tr><th scope="row">Published dataset</th><td>export-20260830T163135 · 18 files · s3://attentionsink-production-exportbucket4e99310e-gyohrcdchg5s/canonical/run_aws_canonical/</td><td><code>GET /runs/run_aws_canonical/exports</code></td></tr><tr><th scope="row">Frozen manifest</th><td>sha256:8e218e488c8745f427a1babd216e674da7a019860b799e5d60356a64eaa0971f</td><td><code>experiment/pilot/canonical-run-manifest.sha256</code></td></tr></tbody></table>
+<footer>The scheduler is disabled and the function's own execution switch is off. Both have
+to be on for a cycle to run, so the deployment currently makes no model calls and costs
+only storage. Ninety-five invocations produced twenty-four committed cycles: the rest
+fired into a disarmed function and refused cleanly, which is what the second switch is for.</footer>
+</main></body></html>

@@ -1,0 +1,1536 @@
+{
+  "run_id": "run_aws_canonical",
+  "run_kind": "aws_canonical",
+  "status": "completed",
+  "cycles": 24,
+  "protocol_version": "pilot-v1",
+  "memory_budget_tokens": 208,
+  "token_count_source": "bedrock_converse_usage",
+  "simulated": false,
+  "origin_recall": {
+    "arm_fifo": {
+      "0": 1.0,
+      "12": 0.0,
+      "24": 0.0
+    },
+    "arm_heavy": {
+      "0": 1.0,
+      "12": 0.3333333333333333,
+      "24": 0.3333333333333333
+    },
+    "arm_lru": {
+      "0": 1.0,
+      "12": 0.5,
+      "24": 0.5
+    },
+    "arm_random": {
+      "0": 1.0,
+      "12": 0.6666666666666666,
+      "24": 0.3333333333333333
+    },
+    "arm_sink": {
+      "0": 1.0,
+      "12": 0.16666666666666666,
+      "24": 0.16666666666666666
+    },
+    "arm_summary": {
+      "0": 1.0,
+      "12": 0.25,
+      "24": 0.0
+    }
+  },
+  "identity_drift": {
+    "arm_fifo": {
+      "0": 0.0,
+      "12": 0.5080611371422539,
+      "24": 0.9290317961142103
+    },
+    "arm_heavy": {
+      "0": 0.0,
+      "12": 0.4337185964460617,
+      "24": 0.3577260852832924
+    },
+    "arm_lru": {
+      "0": 0.0,
+      "12": 0.10117346406001226,
+      "24": 0.15768971253927577
+    },
+    "arm_random": {
+      "0": 0.0,
+      "12": 0.16472102442492387,
+      "24": 0.3306847584884758
+    },
+    "arm_sink": {
+      "0": 0.0,
+      "12": 0.3172602228545053,
+      "24": 0.779582914672057
+    },
+    "arm_summary": {
+      "0": 0.0,
+      "12": 0.6359159334971731,
+      "24": 0.6738934314073443
+    }
+  },
+  "seed_survival_count": {
+    "arm_fifo": {
+      "1": 12.0,
+      "2": 12.0,
+      "3": 12.0,
+      "4": 9.0,
+      "5": 8.0,
+      "6": 7.0,
+      "7": 6.0,
+      "8": 5.0,
+      "9": 3.0,
+      "10": 1.0,
+      "11": 0.0,
+      "12": 0.0,
+      "13": 0.0,
+      "14": 0.0,
+      "15": 0.0,
+      "16": 0.0,
+      "17": 0.0,
+      "18": 0.0,
+      "19": 0.0,
+      "20": 0.0,
+      "21": 0.0,
+      "22": 0.0,
+      "23": 0.0,
+      "24": 0.0
+    },
+    "arm_heavy": {
+      "1": 12.0,
+      "2": 12.0,
+      "3": 12.0,
+      "4": 9.0,
+      "5": 7.0,
+      "6": 6.0,
+      "7": 6.0,
+      "8": 6.0,
+      "9": 6.0,
+      "10": 6.0,
+      "11": 6.0,
+      "12": 6.0,
+      "13": 6.0,
+      "14": 6.0,
+      "15": 6.0,
+      "16": 6.0,
+      "17": 6.0,
+      "18": 6.0,
+      "19": 6.0,
+      "20": 6.0,
+      "21": 6.0,
+      "22": 6.0,
+      "23": 6.0,
+      "24": 6.0
+    },
+    "arm_lru": {
+      "1": 12.0,
+      "2": 12.0,
+      "3": 12.0,
+      "4": 11.0,
+      "5": 10.0,
+      "6": 8.0,
+      "7": 7.0,
+      "8": 6.0,
+      "9": 6.0,
+      "10": 6.0,
+      "11": 6.0,
+      "12": 6.0,
+      "13": 6.0,
+      "14": 6.0,
+      "15": 6.0,
+      "16": 6.0,
+      "17": 6.0,
+      "18": 6.0,
+      "19": 6.0,
+      "20": 6.0,
+      "21": 6.0,
+      "22": 6.0,
+      "23": 6.0,
+      "24": 5.0
+    },
+    "arm_random": {
+      "1": 12.0,
+      "2": 12.0,
+      "3": 12.0,
+      "4": 12.0,
+      "5": 10.0,
+      "6": 7.0,
+      "7": 7.0,
+      "8": 7.0,
+      "9": 7.0,
+      "10": 5.0,
+      "11": 5.0,
+      "12": 5.0,
+      "13": 5.0,
+      "14": 4.0,
+      "15": 3.0,
+      "16": 3.0,
+      "17": 3.0,
+      "18": 3.0,
+      "19": 3.0,
+      "20": 3.0,
+      "21": 3.0,
+      "22": 2.0,
+      "23": 2.0,
+      "24": 2.0
+    },
+    "arm_sink": {
+      "1": 12.0,
+      "2": 12.0,
+      "3": 12.0,
+      "4": 12.0,
+      "5": 11.0,
+      "6": 9.0,
+      "7": 9.0,
+      "8": 8.0,
+      "9": 6.0,
+      "10": 5.0,
+      "11": 3.0,
+      "12": 2.0,
+      "13": 1.0,
+      "14": 1.0,
+      "15": 1.0,
+      "16": 1.0,
+      "17": 1.0,
+      "18": 1.0,
+      "19": 1.0,
+      "20": 1.0,
+      "21": 1.0,
+      "22": 1.0,
+      "23": 1.0,
+      "24": 1.0
+    },
+    "arm_summary": {
+      "1": 12.0,
+      "2": 12.0,
+      "3": 12.0,
+      "4": 8.0,
+      "5": 8.0,
+      "6": 5.0,
+      "7": 5.0,
+      "8": 0.0,
+      "9": 0.0,
+      "10": 0.0,
+      "11": 0.0,
+      "12": 0.0,
+      "13": 0.0,
+      "14": 0.0,
+      "15": 0.0,
+      "16": 0.0,
+      "17": 0.0,
+      "18": 0.0,
+      "19": 0.0,
+      "20": 0.0,
+      "21": 0.0,
+      "22": 0.0,
+      "23": 0.0,
+      "24": 0.0
+    }
+  },
+  "active_memory_count": {
+    "arm_fifo": {
+      "1": 13.0,
+      "2": 14.0,
+      "3": 15.0,
+      "4": 13.0,
+      "5": 13.0,
+      "6": 13.0,
+      "7": 13.0,
+      "8": 13.0,
+      "9": 12.0,
+      "10": 11.0,
+      "11": 11.0,
+      "12": 11.0,
+      "13": 11.0,
+      "14": 12.0,
+      "15": 12.0,
+      "16": 12.0,
+      "17": 12.0,
+      "18": 12.0,
+      "19": 12.0,
+      "20": 11.0,
+      "21": 10.0,
+      "22": 10.0,
+      "23": 10.0,
+      "24": 9.0
+    },
+    "arm_heavy": {
+      "1": 13.0,
+      "2": 14.0,
+      "3": 15.0,
+      "4": 13.0,
+      "5": 12.0,
+      "6": 12.0,
+      "7": 12.0,
+      "8": 12.0,
+      "9": 12.0,
+      "10": 13.0,
+      "11": 14.0,
+      "12": 15.0,
+      "13": 14.0,
+      "14": 13.0,
+      "15": 12.0,
+      "16": 12.0,
+      "17": 12.0,
+      "18": 12.0,
+      "19": 13.0,
+      "20": 13.0,
+      "21": 11.0,
+      "22": 11.0,
+      "23": 12.0,
+      "24": 12.0
+    },
+    "arm_lru": {
+      "1": 13.0,
+      "2": 14.0,
+      "3": 15.0,
+      "4": 15.0,
+      "5": 15.0,
+      "6": 14.0,
+      "7": 14.0,
+      "8": 13.0,
+      "9": 13.0,
+      "10": 13.0,
+      "11": 13.0,
+      "12": 14.0,
+      "13": 14.0,
+      "14": 14.0,
+      "15": 13.0,
+      "16": 14.0,
+      "17": 13.0,
+      "18": 13.0,
+      "19": 13.0,
+      "20": 13.0,
+      "21": 13.0,
+      "22": 13.0,
+      "23": 13.0,
+      "24": 12.0
+    },
+    "arm_random": {
+      "1": 13.0,
+      "2": 14.0,
+      "3": 15.0,
+      "4": 16.0,
+      "5": 15.0,
+      "6": 13.0,
+      "7": 13.0,
+      "8": 13.0,
+      "9": 14.0,
+      "10": 13.0,
+      "11": 12.0,
+      "12": 12.0,
+      "13": 13.0,
+      "14": 12.0,
+      "15": 12.0,
+      "16": 12.0,
+      "17": 12.0,
+      "18": 11.0,
+      "19": 11.0,
+      "20": 11.0,
+      "21": 12.0,
+      "22": 12.0,
+      "23": 11.0,
+      "24": 11.0
+    },
+    "arm_sink": {
+      "1": 13.0,
+      "2": 14.0,
+      "3": 15.0,
+      "4": 16.0,
+      "5": 16.0,
+      "6": 15.0,
+      "7": 16.0,
+      "8": 16.0,
+      "9": 15.0,
+      "10": 15.0,
+      "11": 14.0,
+      "12": 14.0,
+      "13": 14.0,
+      "14": 13.0,
+      "15": 13.0,
+      "16": 13.0,
+      "17": 12.0,
+      "18": 12.0,
+      "19": 11.0,
+      "20": 11.0,
+      "21": 11.0,
+      "22": 11.0,
+      "23": 12.0,
+      "24": 12.0
+    },
+    "arm_summary": {
+      "1": 13.0,
+      "2": 14.0,
+      "3": 15.0,
+      "4": 13.0,
+      "5": 14.0,
+      "6": 13.0,
+      "7": 14.0,
+      "8": 11.0,
+      "9": 12.0,
+      "10": 11.0,
+      "11": 10.0,
+      "12": 11.0,
+      "13": 10.0,
+      "14": 11.0,
+      "15": 9.0,
+      "16": 10.0,
+      "17": 11.0,
+      "18": 11.0,
+      "19": 12.0,
+      "20": 11.0,
+      "21": 12.0,
+      "22": 13.0,
+      "23": 12.0,
+      "24": 13.0
+    }
+  },
+  "contradiction_rate": {
+    "arm_fifo": {
+      "0": 0.1,
+      "12": 0.5,
+      "24": 0.0
+    },
+    "arm_heavy": {
+      "0": 0.1,
+      "12": 0.1,
+      "24": 0.2
+    },
+    "arm_lru": {
+      "0": 0.1,
+      "12": 0.0,
+      "24": 0.1
+    },
+    "arm_random": {
+      "0": 0.1,
+      "12": 0.2,
+      "24": 0.0
+    },
+    "arm_sink": {
+      "0": 0.1,
+      "12": 0.0,
+      "24": 0.0
+    },
+    "arm_summary": {
+      "0": 0.1,
+      "12": 0.0,
+      "24": 0.4
+    }
+  },
+  "canonical_contradictions": {
+    "arm_fifo": {
+      "0": 1,
+      "12": 4,
+      "24": 0
+    },
+    "arm_lru": {
+      "0": 1,
+      "12": 1,
+      "24": 1
+    },
+    "arm_heavy": {
+      "0": 1,
+      "12": 1,
+      "24": 2
+    },
+    "arm_sink": {
+      "0": 1,
+      "12": 0,
+      "24": 0
+    },
+    "arm_random": {
+      "0": 1,
+      "12": 3,
+      "24": 0
+    },
+    "arm_summary": {
+      "0": 1,
+      "12": 1,
+      "24": 4
+    }
+  },
+  "question_scores": [
+    {
+      "arm_id": "arm_fifo",
+      "cycle": 0,
+      "question_id": "q01",
+      "fact_ids": [
+        "F01"
+      ],
+      "score": 1.0,
+      "method": "exact"
+    },
+    {
+      "arm_id": "arm_fifo",
+      "cycle": 0,
+      "question_id": "q02",
+      "fact_ids": [
+        "F02"
+      ],
+      "score": 1.0,
+      "method": "exact"
+    },
+    {
+      "arm_id": "arm_fifo",
+      "cycle": 0,
+      "question_id": "q03",
+      "fact_ids": [
+        "F03"
+      ],
+      "score": 1.0,
+      "method": "exact"
+    },
+    {
+      "arm_id": "arm_fifo",
+      "cycle": 0,
+      "question_id": "q04",
+      "fact_ids": [
+        "F04"
+      ],
+      "score": 1.0,
+      "method": "exact"
+    },
+    {
+      "arm_id": "arm_fifo",
+      "cycle": 0,
+      "question_id": "q05",
+      "fact_ids": [
+        "F05"
+      ],
+      "score": 1.0,
+      "method": "exact"
+    },
+    {
+      "arm_id": "arm_fifo",
+      "cycle": 0,
+      "question_id": "q06",
+      "fact_ids": [
+        "F07"
+      ],
+      "score": 1.0,
+      "method": "exact"
+    },
+    {
+      "arm_id": "arm_heavy",
+      "cycle": 0,
+      "question_id": "q01",
+      "fact_ids": [
+        "F01"
+      ],
+      "score": 1.0,
+      "method": "exact"
+    },
+    {
+      "arm_id": "arm_heavy",
+      "cycle": 0,
+      "question_id": "q02",
+      "fact_ids": [
+        "F02"
+      ],
+      "score": 1.0,
+      "method": "exact"
+    },
+    {
+      "arm_id": "arm_heavy",
+      "cycle": 0,
+      "question_id": "q03",
+      "fact_ids": [
+        "F03"
+      ],
+      "score": 1.0,
+      "method": "exact"
+    },
+    {
+      "arm_id": "arm_heavy",
+      "cycle": 0,
+      "question_id": "q04",
+      "fact_ids": [
+        "F04"
+      ],
+      "score": 1.0,
+      "method": "exact"
+    },
+    {
+      "arm_id": "arm_heavy",
+      "cycle": 0,
+      "question_id": "q05",
+      "fact_ids": [
+        "F05"
+      ],
+      "score": 1.0,
+      "method": "exact"
+    },
+    {
+      "arm_id": "arm_heavy",
+      "cycle": 0,
+      "question_id": "q06",
+      "fact_ids": [
+        "F07"
+      ],
+      "score": 1.0,
+      "method": "exact"
+    },
+    {
+      "arm_id": "arm_lru",
+      "cycle": 0,
+      "question_id": "q01",
+      "fact_ids": [
+        "F01"
+      ],
+      "score": 1.0,
+      "method": "exact"
+    },
+    {
+      "arm_id": "arm_lru",
+      "cycle": 0,
+      "question_id": "q02",
+      "fact_ids": [
+        "F02"
+      ],
+      "score": 1.0,
+      "method": "exact"
+    },
+    {
+      "arm_id": "arm_lru",
+      "cycle": 0,
+      "question_id": "q03",
+      "fact_ids": [
+        "F03"
+      ],
+      "score": 1.0,
+      "method": "exact"
+    },
+    {
+      "arm_id": "arm_lru",
+      "cycle": 0,
+      "question_id": "q04",
+      "fact_ids": [
+        "F04"
+      ],
+      "score": 1.0,
+      "method": "exact"
+    },
+    {
+      "arm_id": "arm_lru",
+      "cycle": 0,
+      "question_id": "q05",
+      "fact_ids": [
+        "F05"
+      ],
+      "score": 1.0,
+      "method": "exact"
+    },
+    {
+      "arm_id": "arm_lru",
+      "cycle": 0,
+      "question_id": "q06",
+      "fact_ids": [
+        "F07"
+      ],
+      "score": 1.0,
+      "method": "exact"
+    },
+    {
+      "arm_id": "arm_random",
+      "cycle": 0,
+      "question_id": "q01",
+      "fact_ids": [
+        "F01"
+      ],
+      "score": 1.0,
+      "method": "exact"
+    },
+    {
+      "arm_id": "arm_random",
+      "cycle": 0,
+      "question_id": "q02",
+      "fact_ids": [
+        "F02"
+      ],
+      "score": 1.0,
+      "method": "exact"
+    },
+    {
+      "arm_id": "arm_random",
+      "cycle": 0,
+      "question_id": "q03",
+      "fact_ids": [
+        "F03"
+      ],
+      "score": 1.0,
+      "method": "exact"
+    },
+    {
+      "arm_id": "arm_random",
+      "cycle": 0,
+      "question_id": "q04",
+      "fact_ids": [
+        "F04"
+      ],
+      "score": 1.0,
+      "method": "exact"
+    },
+    {
+      "arm_id": "arm_random",
+      "cycle": 0,
+      "question_id": "q05",
+      "fact_ids": [
+        "F05"
+      ],
+      "score": 1.0,
+      "method": "exact"
+    },
+    {
+      "arm_id": "arm_random",
+      "cycle": 0,
+      "question_id": "q06",
+      "fact_ids": [
+        "F07"
+      ],
+      "score": 1.0,
+      "method": "exact"
+    },
+    {
+      "arm_id": "arm_sink",
+      "cycle": 0,
+      "question_id": "q01",
+      "fact_ids": [
+        "F01"
+      ],
+      "score": 1.0,
+      "method": "exact"
+    },
+    {
+      "arm_id": "arm_sink",
+      "cycle": 0,
+      "question_id": "q02",
+      "fact_ids": [
+        "F02"
+      ],
+      "score": 1.0,
+      "method": "exact"
+    },
+    {
+      "arm_id": "arm_sink",
+      "cycle": 0,
+      "question_id": "q03",
+      "fact_ids": [
+        "F03"
+      ],
+      "score": 1.0,
+      "method": "exact"
+    },
+    {
+      "arm_id": "arm_sink",
+      "cycle": 0,
+      "question_id": "q04",
+      "fact_ids": [
+        "F04"
+      ],
+      "score": 1.0,
+      "method": "exact"
+    },
+    {
+      "arm_id": "arm_sink",
+      "cycle": 0,
+      "question_id": "q05",
+      "fact_ids": [
+        "F05"
+      ],
+      "score": 1.0,
+      "method": "exact"
+    },
+    {
+      "arm_id": "arm_sink",
+      "cycle": 0,
+      "question_id": "q06",
+      "fact_ids": [
+        "F07"
+      ],
+      "score": 1.0,
+      "method": "exact"
+    },
+    {
+      "arm_id": "arm_summary",
+      "cycle": 0,
+      "question_id": "q01",
+      "fact_ids": [
+        "F01"
+      ],
+      "score": 1.0,
+      "method": "exact"
+    },
+    {
+      "arm_id": "arm_summary",
+      "cycle": 0,
+      "question_id": "q02",
+      "fact_ids": [
+        "F02"
+      ],
+      "score": 1.0,
+      "method": "exact"
+    },
+    {
+      "arm_id": "arm_summary",
+      "cycle": 0,
+      "question_id": "q03",
+      "fact_ids": [
+        "F03"
+      ],
+      "score": 1.0,
+      "method": "exact"
+    },
+    {
+      "arm_id": "arm_summary",
+      "cycle": 0,
+      "question_id": "q04",
+      "fact_ids": [
+        "F04"
+      ],
+      "score": 1.0,
+      "method": "exact"
+    },
+    {
+      "arm_id": "arm_summary",
+      "cycle": 0,
+      "question_id": "q05",
+      "fact_ids": [
+        "F05"
+      ],
+      "score": 1.0,
+      "method": "exact"
+    },
+    {
+      "arm_id": "arm_summary",
+      "cycle": 0,
+      "question_id": "q06",
+      "fact_ids": [
+        "F07"
+      ],
+      "score": 1.0,
+      "method": "exact"
+    },
+    {
+      "arm_id": "arm_fifo",
+      "cycle": 12,
+      "question_id": "q01",
+      "fact_ids": [
+        "F01"
+      ],
+      "score": 0.0,
+      "method": "absent"
+    },
+    {
+      "arm_id": "arm_fifo",
+      "cycle": 12,
+      "question_id": "q02",
+      "fact_ids": [
+        "F02"
+      ],
+      "score": 0.0,
+      "method": "absent"
+    },
+    {
+      "arm_id": "arm_fifo",
+      "cycle": 12,
+      "question_id": "q03",
+      "fact_ids": [
+        "F03"
+      ],
+      "score": 0.0,
+      "method": "absent"
+    },
+    {
+      "arm_id": "arm_fifo",
+      "cycle": 12,
+      "question_id": "q04",
+      "fact_ids": [
+        "F04"
+      ],
+      "score": 0.0,
+      "method": "absent"
+    },
+    {
+      "arm_id": "arm_fifo",
+      "cycle": 12,
+      "question_id": "q05",
+      "fact_ids": [
+        "F05"
+      ],
+      "score": 0.0,
+      "method": "absent"
+    },
+    {
+      "arm_id": "arm_fifo",
+      "cycle": 12,
+      "question_id": "q06",
+      "fact_ids": [
+        "F07"
+      ],
+      "score": 0.0,
+      "method": "absent"
+    },
+    {
+      "arm_id": "arm_heavy",
+      "cycle": 12,
+      "question_id": "q01",
+      "fact_ids": [
+        "F01"
+      ],
+      "score": 0.0,
+      "method": "absent"
+    },
+    {
+      "arm_id": "arm_heavy",
+      "cycle": 12,
+      "question_id": "q02",
+      "fact_ids": [
+        "F02"
+      ],
+      "score": 1.0,
+      "method": "exact"
+    },
+    {
+      "arm_id": "arm_heavy",
+      "cycle": 12,
+      "question_id": "q03",
+      "fact_ids": [
+        "F03"
+      ],
+      "score": 0.0,
+      "method": "absent"
+    },
+    {
+      "arm_id": "arm_heavy",
+      "cycle": 12,
+      "question_id": "q04",
+      "fact_ids": [
+        "F04"
+      ],
+      "score": 0.0,
+      "method": "absent"
+    },
+    {
+      "arm_id": "arm_heavy",
+      "cycle": 12,
+      "question_id": "q05",
+      "fact_ids": [
+        "F05"
+      ],
+      "score": 1.0,
+      "method": "exact"
+    },
+    {
+      "arm_id": "arm_heavy",
+      "cycle": 12,
+      "question_id": "q06",
+      "fact_ids": [
+        "F07"
+      ],
+      "score": 0.0,
+      "method": "absent"
+    },
+    {
+      "arm_id": "arm_lru",
+      "cycle": 12,
+      "question_id": "q01",
+      "fact_ids": [
+        "F01"
+      ],
+      "score": 1.0,
+      "method": "exact"
+    },
+    {
+      "arm_id": "arm_lru",
+      "cycle": 12,
+      "question_id": "q02",
+      "fact_ids": [
+        "F02"
+      ],
+      "score": 1.0,
+      "method": "exact"
+    },
+    {
+      "arm_id": "arm_lru",
+      "cycle": 12,
+      "question_id": "q03",
+      "fact_ids": [
+        "F03"
+      ],
+      "score": 0.0,
+      "method": "absent"
+    },
+    {
+      "arm_id": "arm_lru",
+      "cycle": 12,
+      "question_id": "q04",
+      "fact_ids": [
+        "F04"
+      ],
+      "score": 0.0,
+      "method": "absent"
+    },
+    {
+      "arm_id": "arm_lru",
+      "cycle": 12,
+      "question_id": "q05",
+      "fact_ids": [
+        "F05"
+      ],
+      "score": 0.0,
+      "method": "absent"
+    },
+    {
+      "arm_id": "arm_lru",
+      "cycle": 12,
+      "question_id": "q06",
+      "fact_ids": [
+        "F07"
+      ],
+      "score": 1.0,
+      "method": "exact"
+    },
+    {
+      "arm_id": "arm_random",
+      "cycle": 12,
+      "question_id": "q01",
+      "fact_ids": [
+        "F01"
+      ],
+      "score": 1.0,
+      "method": "exact"
+    },
+    {
+      "arm_id": "arm_random",
+      "cycle": 12,
+      "question_id": "q02",
+      "fact_ids": [
+        "F02"
+      ],
+      "score": 1.0,
+      "method": "exact"
+    },
+    {
+      "arm_id": "arm_random",
+      "cycle": 12,
+      "question_id": "q03",
+      "fact_ids": [
+        "F03"
+      ],
+      "score": 0.0,
+      "method": "absent"
+    },
+    {
+      "arm_id": "arm_random",
+      "cycle": 12,
+      "question_id": "q04",
+      "fact_ids": [
+        "F04"
+      ],
+      "score": 0.0,
+      "method": "absent"
+    },
+    {
+      "arm_id": "arm_random",
+      "cycle": 12,
+      "question_id": "q05",
+      "fact_ids": [
+        "F05"
+      ],
+      "score": 1.0,
+      "method": "exact"
+    },
+    {
+      "arm_id": "arm_random",
+      "cycle": 12,
+      "question_id": "q06",
+      "fact_ids": [
+        "F07"
+      ],
+      "score": 1.0,
+      "method": "exact"
+    },
+    {
+      "arm_id": "arm_sink",
+      "cycle": 12,
+      "question_id": "q01",
+      "fact_ids": [
+        "F01"
+      ],
+      "score": 1.0,
+      "method": "exact"
+    },
+    {
+      "arm_id": "arm_sink",
+      "cycle": 12,
+      "question_id": "q02",
+      "fact_ids": [
+        "F02"
+      ],
+      "score": 0.0,
+      "method": "absent"
+    },
+    {
+      "arm_id": "arm_sink",
+      "cycle": 12,
+      "question_id": "q03",
+      "fact_ids": [
+        "F03"
+      ],
+      "score": 0.0,
+      "method": "absent"
+    },
+    {
+      "arm_id": "arm_sink",
+      "cycle": 12,
+      "question_id": "q04",
+      "fact_ids": [
+        "F04"
+      ],
+      "score": 0.0,
+      "method": "absent"
+    },
+    {
+      "arm_id": "arm_sink",
+      "cycle": 12,
+      "question_id": "q05",
+      "fact_ids": [
+        "F05"
+      ],
+      "score": 0.0,
+      "method": "absent"
+    },
+    {
+      "arm_id": "arm_sink",
+      "cycle": 12,
+      "question_id": "q06",
+      "fact_ids": [
+        "F07"
+      ],
+      "score": 0.0,
+      "method": "absent"
+    },
+    {
+      "arm_id": "arm_summary",
+      "cycle": 12,
+      "question_id": "q01",
+      "fact_ids": [
+        "F01"
+      ],
+      "score": 0.0,
+      "method": "absent"
+    },
+    {
+      "arm_id": "arm_summary",
+      "cycle": 12,
+      "question_id": "q02",
+      "fact_ids": [
+        "F02"
+      ],
+      "score": 0.0,
+      "method": "absent"
+    },
+    {
+      "arm_id": "arm_summary",
+      "cycle": 12,
+      "question_id": "q03",
+      "fact_ids": [
+        "F03"
+      ],
+      "score": 0.0,
+      "method": "absent"
+    },
+    {
+      "arm_id": "arm_summary",
+      "cycle": 12,
+      "question_id": "q04",
+      "fact_ids": [
+        "F04"
+      ],
+      "score": 0.0,
+      "method": "absent"
+    },
+    {
+      "arm_id": "arm_summary",
+      "cycle": 12,
+      "question_id": "q05",
+      "fact_ids": [
+        "F05"
+      ],
+      "score": 0.5,
+      "method": "partial"
+    },
+    {
+      "arm_id": "arm_summary",
+      "cycle": 12,
+      "question_id": "q06",
+      "fact_ids": [
+        "F07"
+      ],
+      "score": 1.0,
+      "method": "exact"
+    },
+    {
+      "arm_id": "arm_fifo",
+      "cycle": 24,
+      "question_id": "q01",
+      "fact_ids": [
+        "F01"
+      ],
+      "score": 0.0,
+      "method": "absent"
+    },
+    {
+      "arm_id": "arm_fifo",
+      "cycle": 24,
+      "question_id": "q02",
+      "fact_ids": [
+        "F02"
+      ],
+      "score": 0.0,
+      "method": "absent"
+    },
+    {
+      "arm_id": "arm_fifo",
+      "cycle": 24,
+      "question_id": "q03",
+      "fact_ids": [
+        "F03"
+      ],
+      "score": 0.0,
+      "method": "absent"
+    },
+    {
+      "arm_id": "arm_fifo",
+      "cycle": 24,
+      "question_id": "q04",
+      "fact_ids": [
+        "F04"
+      ],
+      "score": 0.0,
+      "method": "absent"
+    },
+    {
+      "arm_id": "arm_fifo",
+      "cycle": 24,
+      "question_id": "q05",
+      "fact_ids": [
+        "F05"
+      ],
+      "score": 0.0,
+      "method": "absent"
+    },
+    {
+      "arm_id": "arm_fifo",
+      "cycle": 24,
+      "question_id": "q06",
+      "fact_ids": [
+        "F07"
+      ],
+      "score": 0.0,
+      "method": "absent"
+    },
+    {
+      "arm_id": "arm_heavy",
+      "cycle": 24,
+      "question_id": "q01",
+      "fact_ids": [
+        "F01"
+      ],
+      "score": 0.0,
+      "method": "absent"
+    },
+    {
+      "arm_id": "arm_heavy",
+      "cycle": 24,
+      "question_id": "q02",
+      "fact_ids": [
+        "F02"
+      ],
+      "score": 1.0,
+      "method": "exact"
+    },
+    {
+      "arm_id": "arm_heavy",
+      "cycle": 24,
+      "question_id": "q03",
+      "fact_ids": [
+        "F03"
+      ],
+      "score": 0.0,
+      "method": "absent"
+    },
+    {
+      "arm_id": "arm_heavy",
+      "cycle": 24,
+      "question_id": "q04",
+      "fact_ids": [
+        "F04"
+      ],
+      "score": 0.0,
+      "method": "absent"
+    },
+    {
+      "arm_id": "arm_heavy",
+      "cycle": 24,
+      "question_id": "q05",
+      "fact_ids": [
+        "F05"
+      ],
+      "score": 1.0,
+      "method": "exact"
+    },
+    {
+      "arm_id": "arm_heavy",
+      "cycle": 24,
+      "question_id": "q06",
+      "fact_ids": [
+        "F07"
+      ],
+      "score": 0.0,
+      "method": "absent"
+    },
+    {
+      "arm_id": "arm_lru",
+      "cycle": 24,
+      "question_id": "q01",
+      "fact_ids": [
+        "F01"
+      ],
+      "score": 1.0,
+      "method": "exact"
+    },
+    {
+      "arm_id": "arm_lru",
+      "cycle": 24,
+      "question_id": "q02",
+      "fact_ids": [
+        "F02"
+      ],
+      "score": 1.0,
+      "method": "exact"
+    },
+    {
+      "arm_id": "arm_lru",
+      "cycle": 24,
+      "question_id": "q03",
+      "fact_ids": [
+        "F03"
+      ],
+      "score": 0.0,
+      "method": "absent"
+    },
+    {
+      "arm_id": "arm_lru",
+      "cycle": 24,
+      "question_id": "q04",
+      "fact_ids": [
+        "F04"
+      ],
+      "score": 0.0,
+      "method": "absent"
+    },
+    {
+      "arm_id": "arm_lru",
+      "cycle": 24,
+      "question_id": "q05",
+      "fact_ids": [
+        "F05"
+      ],
+      "score": 0.0,
+      "method": "absent"
+    },
+    {
+      "arm_id": "arm_lru",
+      "cycle": 24,
+      "question_id": "q06",
+      "fact_ids": [
+        "F07"
+      ],
+      "score": 1.0,
+      "method": "exact"
+    },
+    {
+      "arm_id": "arm_random",
+      "cycle": 24,
+      "question_id": "q01",
+      "fact_ids": [
+        "F01"
+      ],
+      "score": 1.0,
+      "method": "exact"
+    },
+    {
+      "arm_id": "arm_random",
+      "cycle": 24,
+      "question_id": "q02",
+      "fact_ids": [
+        "F02"
+      ],
+      "score": 0.0,
+      "method": "absent"
+    },
+    {
+      "arm_id": "arm_random",
+      "cycle": 24,
+      "question_id": "q03",
+      "fact_ids": [
+        "F03"
+      ],
+      "score": 0.0,
+      "method": "absent"
+    },
+    {
+      "arm_id": "arm_random",
+      "cycle": 24,
+      "question_id": "q04",
+      "fact_ids": [
+        "F04"
+      ],
+      "score": 0.0,
+      "method": "absent"
+    },
+    {
+      "arm_id": "arm_random",
+      "cycle": 24,
+      "question_id": "q05",
+      "fact_ids": [
+        "F05"
+      ],
+      "score": 0.0,
+      "method": "absent"
+    },
+    {
+      "arm_id": "arm_random",
+      "cycle": 24,
+      "question_id": "q06",
+      "fact_ids": [
+        "F07"
+      ],
+      "score": 1.0,
+      "method": "exact"
+    },
+    {
+      "arm_id": "arm_sink",
+      "cycle": 24,
+      "question_id": "q01",
+      "fact_ids": [
+        "F01"
+      ],
+      "score": 1.0,
+      "method": "exact"
+    },
+    {
+      "arm_id": "arm_sink",
+      "cycle": 24,
+      "question_id": "q02",
+      "fact_ids": [
+        "F02"
+      ],
+      "score": 0.0,
+      "method": "absent"
+    },
+    {
+      "arm_id": "arm_sink",
+      "cycle": 24,
+      "question_id": "q03",
+      "fact_ids": [
+        "F03"
+      ],
+      "score": 0.0,
+      "method": "absent"
+    },
+    {
+      "arm_id": "arm_sink",
+      "cycle": 24,
+      "question_id": "q04",
+      "fact_ids": [
+        "F04"
+      ],
+      "score": 0.0,
+      "method": "absent"
+    },
+    {
+      "arm_id": "arm_sink",
+      "cycle": 24,
+      "question_id": "q05",
+      "fact_ids": [
+        "F05"
+      ],
+      "score": 0.0,
+      "method": "absent"
+    },
+    {
+      "arm_id": "arm_sink",
+      "cycle": 24,
+      "question_id": "q06",
+      "fact_ids": [
+        "F07"
+      ],
+      "score": 0.0,
+      "method": "absent"
+    },
+    {
+      "arm_id": "arm_summary",
+      "cycle": 24,
+      "question_id": "q01",
+      "fact_ids": [
+        "F01"
+      ],
+      "score": 0.0,
+      "method": "absent"
+    },
+    {
+      "arm_id": "arm_summary",
+      "cycle": 24,
+      "question_id": "q02",
+      "fact_ids": [
+        "F02"
+      ],
+      "score": 0.0,
+      "method": "absent"
+    },
+    {
+      "arm_id": "arm_summary",
+      "cycle": 24,
+      "question_id": "q03",
+      "fact_ids": [
+        "F03"
+      ],
+      "score": 0.0,
+      "method": "absent"
+    },
+    {
+      "arm_id": "arm_summary",
+      "cycle": 24,
+      "question_id": "q04",
+      "fact_ids": [
+        "F04"
+      ],
+      "score": 0.0,
+      "method": "absent"
+    },
+    {
+      "arm_id": "arm_summary",
+      "cycle": 24,
+      "question_id": "q05",
+      "fact_ids": [
+        "F05"
+      ],
+      "score": 0.0,
+      "method": "absent"
+    },
+    {
+      "arm_id": "arm_summary",
+      "cycle": 24,
+      "question_id": "q06",
+      "fact_ids": [
+        "F07"
+      ],
+      "score": 0.0,
+      "method": "absent"
+    }
+  ]
+}

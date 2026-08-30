@@ -1,0 +1,44 @@
+{
+  "collected_at": "2026-08-30T22:54:37+00:00",
+  "region": "us-east-1",
+  "account": "****2684",
+  "run": {
+    "run_id": "run_aws_canonical",
+    "run_kind": "aws_canonical",
+    "status": "completed",
+    "cycles": "24/24",
+    "protocol_version": "pilot-v1",
+    "budget": "208 tokens (bedrock_converse_usage)",
+    "labels": "AWS_CANONICAL, CANONICAL, REAL_MODEL_OUTPUTS, EXACT_TOKEN_BUDGET",
+    "simulated": false
+  },
+  "schedule": {
+    "name": "attention-sink-production-cycle",
+    "expression": "rate(2 minutes)",
+    "state": "DISABLED",
+    "retry": "2 attempts, 3600s max age",
+    "dead_letter_queue": "AttentionSink-production-SchedulerDlqBE0A9ADA-YbKbSbN4liQh",
+    "target": "AttentionSink-production-RunCycleFunctionBD273DDC-ZbZNOlFXnwP1"
+  },
+  "execution": {
+    "run_cycle_invocations": 95,
+    "run_cycle_errors": 0,
+    "throttles": 0,
+    "as_execution_enabled": "false",
+    "memory_mb": 1024,
+    "timeout_s": 600,
+    "last_modified": "2026-08-30T21:20:35.000+0000"
+  },
+  "public": {
+    "frontend": "https://d1qskxceo899me.cloudfront.net",
+    "frontend_status": 200,
+    "api": "https://ioyvs8o9xa.execute-api.us-east-1.amazonaws.com",
+    "api_health": "ok"
+  },
+  "export": {
+    "export_id": "export-20260830T163135",
+    "files": 18,
+    "directory": "s3://attentionsink-production-exportbucket4e99310e-gyohrcdchg5s/canonical/run_aws_canonical/",
+    "manifest_digest": "sha256:8e218e488c8745f427a1babd216e674da7a019860b799e5d60356a64eaa0971f"
+  }
+}

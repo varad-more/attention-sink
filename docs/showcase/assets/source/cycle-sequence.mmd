@@ -1,0 +1,31 @@
+%% Attention Sink — one cycle, end to end.
+%% Source of truth for the ordering; the rendered SVG at
+%% docs/showcase/assets/readme/cycle-sequence.svg is laid out by
+%% scripts/build_showcase_diagrams.py so it stays legible at README width.
+sequenceDiagram
+    autonumber
+    participant SCHED as EventBridge Scheduler
+    participant CYCLE as Run-Cycle Lambda
+    participant BR as Amazon Bedrock
+    participant POL as Policy engine
+    participant DDB as Amazon DynamoDB
+    participant BUS as Amazon EventBridge
+    participant ANA as Analysis Lambda
+    participant API as Public read API
+    participant WEB as Exhibition frontend
+
+    SCHED->>CYCLE: invoke — rate(2 minutes), one cycle
+    CYCLE->>DDB: load six committed arm states and the next stimulus
+    CYCLE->>BR: six writer calls: same stimulus, same prompt, no arm name
+    BR->>CYCLE: journal entry, candidate memory, claimed citations
+    CYCLE->>POL: validate citations against the active set
+    POL->>BR: Dreamer only — one extra call to write the summary
+    POL->>CYCLE: evict or compress until the arm fits 208 tokens
+    CYCLE->>DDB: TransactWriteItems — all six snapshots, or none
+    CYCLE->>BUS: emit cycle-completed
+    BUS->>ANA: rule fires
+    ANA->>DDB: recall, drift, echo, contradiction — written back
+    WEB->>API: visitor opens a cycle
+    API->>DDB: read committed state only; a cycle in flight is invisible
+
+    Note over CYCLE,DDB: Steps 1-8 are the experiment. Everything after<br/>step 8 reads what step 8 committed and can never change it.

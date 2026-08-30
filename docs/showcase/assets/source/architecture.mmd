@@ -1,0 +1,57 @@
+%% Attention Sink — deployed AWS architecture, us-east-1.
+%% The rendered diagram in docs/showcase/assets/readme/08-architecture.svg is
+%% hand-drawn from this graph so that it stays legible at README width. This file
+%% is the source of truth for what connects to what; edit it first.
+graph TB
+    subgraph write["Scheduled generation — one bounded cycle at a time"]
+        SCHED["EventBridge Scheduler<br/>attention-sink-production-cycle<br/>rate(2 minutes) · currently DISABLED"]
+        CYCLE["AWS Lambda — Run-Cycle<br/>python3.12 · 1024 MB · 600 s"]
+        BR1["Amazon Bedrock<br/>amazon.nova-micro-v1:0<br/>writer · summariser · token counter"]
+        SDLQ["Amazon SQS<br/>scheduler dead-letter queue"]
+        SCHED -->|"invoke"| CYCLE
+        SCHED -.->|"failed delivery"| SDLQ
+        CYCLE -->|"6 writer calls + 6 token counts"| BR1
+    end
+
+    DDB[("Amazon DynamoDB<br/>single table · run, arms, snapshots,<br/>graveyard, metrics, interviews")]
+    CYCLE -->|"TransactWriteItems — six arms, atomic"| DDB
+
+    subgraph analyse["Asynchronous analysis"]
+        BUS["Amazon EventBridge<br/>cycle-completed event"]
+        ANALYSIS["AWS Lambda — Analysis<br/>python3.12 · 1536 MB · 900 s"]
+        BR2["Amazon Bedrock<br/>nova-micro judge<br/>titan-embed-text-v2 embeddings"]
+        ADLQ["Amazon SQS<br/>analysis dead-letter queue"]
+        CYCLE -->|"emit"| BUS
+        BUS -->|"rule"| ANALYSIS
+        ANALYSIS --> BR2
+        ANALYSIS -.->|"failure"| ADLQ
+    end
+    ANALYSIS -->|"metrics, echoes, contradictions"| DDB
+
+    subgraph read["Public read path — no mutation route exists"]
+        USER(["Visitor's browser"])
+        CF["Amazon CloudFront<br/>Origin Access Control · CSP + HSTS"]
+        S3F[("Amazon S3<br/>frontend bucket · private")]
+        APIGW["Amazon API Gateway<br/>HTTP API · GET only"]
+        READ["AWS Lambda — Read API<br/>python3.12 · 512 MB · cap 100"]
+        USER --> CF
+        CF -->|"/"| S3F
+        CF -->|"/api/*"| APIGW
+        APIGW --> READ
+    end
+    READ -->|"read-only"| DDB
+
+    subgraph export["Dataset export"]
+        EXPORT["Export command<br/>18 files + checksums.sha256"]
+        S3X[("Amazon S3<br/>export bucket · private")]
+        EXPORT --> S3X
+        S3X -->|"canonical prefix only"| CF
+    end
+    DDB --> EXPORT
+
+    subgraph ops["Operational monitoring"]
+        CW["Amazon CloudWatch<br/>logs · 4 alarms · invocation metrics"]
+    end
+    CYCLE -.-> CW
+    ANALYSIS -.-> CW
+    READ -.-> CW
