@@ -64,7 +64,7 @@ Statuses: **PASS** · **FAIL** · **PARTIAL** · **DEFERRED_TO_AWS**
 | Thirteen deterministic secondary metrics | `secondary_metrics`              | `test_the_secondary_metrics_need_no_model_call`                         | PASS   |
 | Local read API, completed data only      | `packages/api`                   | `test_the_api_refuses_a_cycle_that_has_not_been_committed`              | PASS   |
 | No public write routes                   | route table                      | `test_the_api_registers_no_write_route`                                 | PASS   |
-| Seventeen-file dataset export            | `analysis/export.py`             | `test_the_export_writes_every_documented_file`                          | PASS   |
+| Eighteen-file dataset export             | `analysis/export.py`             | `test_the_export_writes_every_documented_file`                          | PASS   |
 | Checksum verification                    | `verify_checksums`               | `test_a_corrupted_export_is_detected`                                   | PASS   |
 | Run verification command                 | `scripts/verify_local_run.py`    | 16/16 checks pass                                                       | PASS   |
 

@@ -164,7 +164,13 @@ local-reset-demo: ## Delete the local run. Refuses anything that is not LOCAL_FI
 	$(LOCAL) --database $(LOCAL_DB) --run-id $(LOCAL_RUN) reset
 
 local-all: ## The whole local pipeline, from an empty database to a verified export
-	$(MAKE) local-db-migrate local-run-create
+	@# "From an empty database" has to be true on the second run as well, or the
+	@# regression suite passes once and then reports a stale run for ever. The reset
+	@# refuses anything that is not LOCAL_FIXTURE, so the leading `-` forgives only the
+	@# case there was nothing to delete; a refusal still fails `local-run-create` below.
+	$(MAKE) local-db-migrate
+	-$(MAKE) local-reset-demo
+	$(MAKE) local-run-create
 	$(LOCAL) --database $(LOCAL_DB) --run-id $(LOCAL_RUN) cycle --count 24
 	$(MAKE) local-analyze local-export local-verify
 

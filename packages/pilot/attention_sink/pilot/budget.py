@@ -22,7 +22,25 @@ from pydantic import BaseModel, ConfigDict, Field
 from attention_sink.model_gateway import CallMetadata, ModelRole
 from attention_sink.pilot.protocol import ModelCallLimits
 
-__all__ = ["CallLedgerEntry", "ModelCallBudget", "ModelCallBudgetExceeded", "ModelUsage"]
+__all__ = [
+    "CallLedgerEntry",
+    "ModelCallBudget",
+    "ModelCallBudgetExceeded",
+    "ModelUsage",
+    "cycle_calls",
+]
+
+
+def cycle_calls(usage: ModelUsage) -> int:
+    """How many of a run's calls were cycle work rather than analysis.
+
+    Read off attribution rather than off a list of roles. A cycle charges every call
+    it makes to the arm it made it for; analysis asks the judge and the embedding
+    model about the run as a whole and charges no arm. That distinction survives a
+    protocol that starts spending on a role analysis also uses, which a role list
+    would not.
+    """
+    return sum(1 for entry in usage.ledger if entry.arm_id is not None)
 
 
 class ModelCallBudgetExceeded(RuntimeError):
@@ -85,6 +103,13 @@ class ModelCallBudget:
     run_id: str = "pilot_local"
     cycle: int = 0
     checkpoint: bool = False
+    previously_spent: int = 0
+    """Governed calls this run made before this process existed.
+
+    A run advances one cycle per process, so without this the per-run ceiling would
+    bound a single invocation and never the run -- which is the opposite of what a
+    ceiling called ``max_model_calls_per_run`` promises. Seeded from the stored run,
+    counting only :data:`GOVERNED_ROLES`."""
     _ledger: list[CallLedgerEntry] = field(default_factory=list, repr=False)
     _cycle_calls: Counter[ModelRole] = field(default_factory=Counter, repr=False)
     _run_calls: Counter[ModelRole] = field(default_factory=Counter, repr=False)
@@ -148,7 +173,7 @@ class ModelCallBudget:
                     f"already made {spent}; refusing to call the model"
                 )
                 raise ModelCallBudgetExceeded(msg)
-            total = sum(self._run_calls.values())
+            total = self.previously_spent + sum(self._run_calls.values())
             if total >= self.limits.max_model_calls_per_run:
                 msg = (
                     f"this run is limited to {self.limits.max_model_calls_per_run} model "

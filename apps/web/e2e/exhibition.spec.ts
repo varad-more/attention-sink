@@ -145,14 +145,23 @@ test('12: export metadata is visible with its provenance labels', async ({ page 
   await page.goto('/methodology#export');
   const table = page.getByTestId('export-table');
   await expect(table).toBeVisible();
-  await expect(table).toContainText('LOCAL_FIXTURE');
-  await expect(table).toContainText('NON_CANONICAL');
+  // The labels come off the export manifest, so they say what the run was rather than
+  // what this build is. A canonical export must never be labelled a fixture.
+  for (const label of DEPLOYED
+    ? ['CANONICAL', 'REAL_MODEL_OUTPUTS']
+    : ['LOCAL_FIXTURE', 'NON_CANONICAL']) {
+    await expect(table).toContainText(label);
+  }
+  if (DEPLOYED) {
+    await expect(table).not.toContainText('LOCAL_FIXTURE');
+  }
 });
 
 test('13: the core flow works on a small screen', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== MOBILE, 'the mobile project covers this');
   await page.goto('/');
-  await expect(page.getByTestId('simulated-banner')).toBeVisible();
+  const banner = page.getByTestId('simulated-banner');
+  await (DEPLOYED ? expect(banner).toHaveCount(0) : expect(banner).toBeVisible());
   await expect(page.getByTestId('mind-arm_fifo')).toBeVisible();
   // Scoped to the navigation landmark: the landing page also links to the Graveyard,
   // and a bare name would match both.

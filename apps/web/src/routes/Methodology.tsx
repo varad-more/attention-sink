@@ -282,11 +282,12 @@ export function Methodology() {
 
       <h2 id="export">Dataset export</h2>
       <p>
-        Every run exports seventeen files: the run manifest, the protocol, the seed memories, the
-        stimuli, the predictions, every cycle snapshot, the arms’ current states, the Graveyard, the
-        interviews, the metrics as JSON and as CSV, the divergence matrices, model usage, lineage,
-        the prompt manifest, the export manifest, and a <code>checksums.sha256</code> that{' '}
-        <code>sha256sum -c</code> verifies without any tool from this repository.
+        Every run exports eighteen files: the run manifest, the protocol, the public truth ledger,
+        the seed memories, the stimuli, the predictions, every cycle snapshot, the arms’ current
+        states, the Graveyard, the interviews, the metrics as JSON and as CSV, the divergence
+        matrices, model usage, lineage, the prompt manifest, the export manifest, and a{' '}
+        <code>checksums.sha256</code> that <code>sha256sum -c</code> verifies without any tool from
+        this repository.
       </p>
       {(exports.data?.length ?? 0) > 0 ? (
         <div className="scroll-x">

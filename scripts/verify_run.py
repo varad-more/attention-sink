@@ -27,6 +27,7 @@ from pathlib import Path
 
 from attention_sink.analysis import EXPORT_FILES, build_graveyard, verify_checksums
 from attention_sink.domain import MemoryKind, MemoryStatus
+from attention_sink.pilot.budget import cycle_calls
 from attention_sink.pilot.local import DEFAULT_DATABASE, DEFAULT_RUN_ID
 from attention_sink.pilot.protocol import DEFAULT_PROTOCOL_ROOT, load_bundle
 from attention_sink.pilot.repositories import PilotRepository
@@ -330,8 +331,12 @@ def run_checks(*, repository: PilotRepository, run_id: str, root: Path, export: 
         """What the run spent, against the ceilings the protocol declared."""
         limits = configuration.model_call_limits
         usage = run.usage
-        if usage.total_calls > limits.max_model_calls_per_run:
-            yield f"{usage.total_calls} calls against a ceiling of {limits.max_model_calls_per_run}"
+        # Cycle work only. The ceiling governs what a cycle may spend; analysis asks
+        # the judge and the embedding model about the whole run afterwards, and
+        # counting those against a per-cycle ceiling would fail a healthy run.
+        spent = cycle_calls(usage)
+        if spent > limits.max_model_calls_per_run:
+            yield f"{spent} cycle calls against a ceiling of {limits.max_model_calls_per_run}"
         cycles = len(completed)
         expectations = {
             "writer": limits.writer_calls_per_cycle * cycles,

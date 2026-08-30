@@ -305,7 +305,7 @@ anything, and no AWS service is called.
   entirely on any failure. No partial cycle is ever visible.
 - `packages/analysis` - Origin Recall, Identity Drift, Graveyard, Graveyard Echo,
   contradiction analysis, thirteen deterministic secondary metrics, and the
-  seventeen-file dataset export.
+  eighteen-file dataset export.
 - `packages/api` - the local read API. Sixteen routes, read-only by construction:
   no mutating verb is registered and a test asserts the route table contains only
   `GET`. Prepared cycles, future stimuli, evaluator notes, and prompt text are

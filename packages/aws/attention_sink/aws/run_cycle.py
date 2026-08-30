@@ -143,14 +143,18 @@ def run_one_cycle(
 
     duration_ms = int((time.monotonic() - started) * 1000)
     _publish(runtime, outcome)
-    usage = outcome.run.usage
+    # This cycle's own spend, not the run's running total. The alarm on this field is
+    # called "abnormal token use", and a cumulative counter crosses any fixed
+    # threshold eventually -- so logging the total made the alarm fire on cycle nine
+    # of a healthy run and mean nothing thereafter. The run's totals are on the run.
+    before, after = run.usage, outcome.run.usage
     log.info(
         "cycle.committed",
         cycle=outcome.cycle,
         duration_ms=duration_ms,
-        input_tokens=usage.input_tokens,
-        output_tokens=usage.output_tokens,
-        retry_count=usage.retries,
+        input_tokens=max(after.input_tokens - before.input_tokens, 0),
+        output_tokens=max(after.output_tokens - before.output_tokens, 0),
+        retry_count=max(after.retries - before.retries, 0),
         result_code="committed",
     )
     return {
@@ -163,7 +167,7 @@ def run_one_cycle(
         "run_status": outcome.run.status.value,
         "current_cycle": outcome.run.current_cycle,
         "duration_ms": duration_ms,
-        "total_model_calls": usage.total_calls,
+        "total_model_calls": after.total_calls,
     }
 
 

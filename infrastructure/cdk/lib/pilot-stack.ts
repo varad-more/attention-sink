@@ -376,8 +376,13 @@ export class PilotStack extends Stack {
       logGroup,
       // One at a time. Two invocations of the cycle function would contend for the
       // same lock and one would waste a cold start losing the race; the read API is
-      // given room because it is the only thing a visitor waits on.
-      reservedConcurrentExecutions: id === 'ReadApiFunction' ? 20 : 2,
+      // given room because it is the only thing a visitor waits on. A single page
+      // load opens several requests at once, so a handful of simultaneous visitors
+      // reaches tens of concurrent invocations, and a throttled one is a 503 on a
+      // public exhibition. The cap stays -- it is the runaway guard -- but it is set
+      // above what a burst of readers costs, which is nothing: this function reads
+      // DynamoDB and calls no model.
+      reservedConcurrentExecutions: id === 'ReadApiFunction' ? 100 : 2,
       ...(options.deadLetterQueue ? { deadLetterQueue: options.deadLetterQueue } : {}),
     });
   }
@@ -618,7 +623,11 @@ export class PilotStack extends Stack {
         'A cycle consumed far more input tokens than the budget implies, which ' +
         'means a prompt is carrying something it should not.',
       metric: inputTokens.metric({ statistic: 'Maximum', period: Duration.hours(1) }),
-      threshold: 200_000,
+      // Roughly four times a real cycle. The canonical run's cycles cost twelve to
+      // fifteen thousand input tokens each: six writer requests around a memory block
+      // that is capped by the budget, plus six counting calls. Anything at four times
+      // that is a prompt carrying something the protocol did not put in it.
+      threshold: 50_000,
       evaluationPeriods: 1,
       comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
       treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,

@@ -24,7 +24,7 @@ from datetime import UTC, datetime
 
 from attention_sink.domain import ArmId, MemoryState
 from attention_sink.model_gateway import InterviewQuestion, ModelGateway
-from attention_sink.pilot.budget import ModelCallBudget, ModelUsage
+from attention_sink.pilot.budget import ModelCallBudget, ModelUsage, cycle_calls
 from attention_sink.pilot.canonical import canonical_digest
 from attention_sink.pilot.configuration import PilotRunConfiguration, RunKind
 from attention_sink.pilot.engine import CheckpointRecord, PilotEngine, StagedCycle
@@ -281,6 +281,10 @@ class PilotService:
         what makes it the same object a Lambda handler will construct per invocation.
         """
         engine = self._fresh_engine(run.configuration)
+        # What the run has already spent, so the per-run ceiling bounds the run and
+        # not this one invocation. A deployment advances one cycle per process, so a
+        # budget that started empty every time would never reach any ceiling at all.
+        engine.budget.previously_spent = cycle_calls(run.usage)
         engine.initialize_pilot_run()
         states = self.repository.get_all_current_arm_states(run.run_id)
         missing = [arm.value for arm in run.configuration.arms if arm.value not in states]

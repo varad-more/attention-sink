@@ -128,3 +128,26 @@ def test_usage_records_failures_tokens_and_retries(budget: ModelCallBudget):
     assert usage.retries == 2
     assert usage.input_tokens == 20
     assert usage.output_tokens == 4
+
+
+def test_the_run_ceiling_counts_what_earlier_processes_already_spent():
+    """A deployment advances one cycle per process, so the ceiling has to carry over.
+
+    Without this the per-run limit bounds a single invocation and never the run,
+    which is the opposite of what a field called `max_model_calls_per_run` promises.
+    """
+    budget = ModelCallBudget(limits=LIMITS, previously_spent=LIMITS.max_model_calls_per_run - 1)
+    budget.open_cycle(9)
+
+    budget.spend(ModelRole.WRITER)
+    with pytest.raises(ModelCallBudgetExceeded, match="has made 400"):
+        budget.spend(ModelRole.WRITER)
+
+
+def test_a_fresh_run_has_spent_nothing():
+    budget = ModelCallBudget(limits=LIMITS)
+    budget.open_cycle(1)
+
+    budget.spend(ModelRole.WRITER)
+
+    assert budget.usage.total_calls == 1

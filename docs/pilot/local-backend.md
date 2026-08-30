@@ -11,7 +11,7 @@ make local-db-migrate    # create the database and apply every migration
 make local-run-create    # create a run, seed six arms, interview at cycle 0
 make local-cycle LOCAL_CYCLES=24
 make local-analyze       # score every metric and store its evidence
-make local-export        # write the seventeen-file dataset and its checksums
+make local-export        # write the eighteen-file dataset and its checksums
 make local-verify        # check the run against every invariant it claims
 make local-all           # all of the above, from an empty database
 ```

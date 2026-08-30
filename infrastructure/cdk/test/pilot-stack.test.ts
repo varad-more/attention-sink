@@ -391,6 +391,23 @@ describe('the functions', () => {
     );
   });
 
+  it('caps every function, and leaves the read API room for a burst of visitors', () => {
+    // A cap on the writing functions is a lock; a cap on the read API is an outage
+    // waiting for the day the exhibition is busy. Both are capped, at very different
+    // numbers, and the difference is the assertion.
+    const limits = Object.entries(ourFunctions(staging)).map(
+      ([id, fn]) => [id, fn.Properties.ReservedConcurrentExecutions as number] as const,
+    );
+    for (const [id, limit] of limits) {
+      expect(limit, `${id} has no concurrency cap`).toBeTypeOf('number');
+      if (id.startsWith('ReadApiFunction')) {
+        expect(limit, `${id} would throttle a handful of visitors`).toBeGreaterThanOrEqual(50);
+      } else {
+        expect(limit, `${id} could run twice against one lock`).toBeLessThanOrEqual(2);
+      }
+    }
+  });
+
   it('deploy inert: execution and the scheduler are both off', () => {
     for (const fn of Object.values(ourFunctions(staging))) {
       expect(fn.Properties.Environment.Variables.AS_EXECUTION_ENABLED).toBe('false');
@@ -525,6 +542,20 @@ describe('the token counter', () => {
     }
     const outputs = template.toJSON().Outputs as Record<string, { Value: string }>;
     expect(outputs.TokenCountSource?.Value).toBe('converse');
+  });
+});
+
+describe('the abnormal-token-use alarm', () => {
+  it('watches one cycle rather than the run, so it can fire more than once', () => {
+    // The handler logs this cycle's own spend. It logged the run's cumulative total
+    // until the canonical run made the difference obvious: a cumulative counter
+    // crosses any fixed threshold eventually and then stays over it forever.
+    const template = synthesise('production');
+    template.hasResourceProperties('AWS::CloudWatch::Alarm', {
+      MetricName: 'CycleInputTokens',
+      Threshold: 50_000,
+      Statistic: 'Maximum',
+    });
   });
 });
 
