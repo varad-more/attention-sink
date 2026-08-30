@@ -1,0 +1,81 @@
+# The pilot protocol. Everything a canonical pilot run is defined by.
+#
+# `memory_budget_tokens` and `counter_version` are null in a draft on purpose. The
+# budget is denominated in the tokens of the counter that will measure it, and that
+# number is not known until the seed world has been calibrated against that counter.
+# `make pilot-freeze` refuses a protocol whose budget is still null.
+schema_version: 1
+protocol_version: pilot-v1
+status: frozen
+title: Attention Sink pilot - Station Kestrel
+description: >-
+  Six arms, identical seed memories and stimuli, one fixed active-memory budget, and
+  exactly one difference between them: the mechanism that decides what to forget.
+created_at: '2026-08-29T00:00:00Z'
+content_hash: 'sha256:a96fe422aa032d6f32679244eecf9d79d70c40d697c4b302c0147af298c8dca5'
+
+# ------------------------------------------------------------ referenced protocol
+seed_world_version: station-kestrel-pilot-v1
+stimulus_deck_version: station-kestrel-pilot-v1
+truth_ledger_version: station-kestrel-pilot-v1
+interview_version: pilot-v1
+
+# ------------------------------------------------------------------- run shape
+max_cycles: 24
+checkpoint_cycles: [0, 12, 24]
+arms:
+  - arm_fifo
+  - arm_lru
+  - arm_heavy
+  - arm_sink
+  - arm_random
+  - arm_summary
+
+# --------------------------------------------------------------------- budget
+# Written by `make pilot-calibrate`. See ADR-011: a budget in one counter's tokens
+# measured with another counter is not a budget.
+memory_budget_tokens: 240
+counter_version: heuristic-v1
+
+# --------------------------------------------------------------------- prompts
+writer_prompt_version: v1
+summary_prompt_version: v1
+
+# ----------------------------------------------------------- policy parameters
+policies:
+  fifo:
+    version: fifo-v1
+  lru:
+    version: lru-v1
+  heavy_hitter:
+    version: heavy-v1
+    citation_decay: 0.90
+    recency_reserve: 2
+  pinned_origin:
+    version: sink-v1
+    pinned_seed_memory_id: seed_01
+  seeded_random:
+    version: random-v1
+    random_seed: kestrel-pilot-v1-9f2c41a7
+  dreamer:
+    version: summary-v1
+    target_summary_tokens: 24
+    safety_margin_tokens: 8
+    min_sources: 2
+    fallback_rule: fifo
+
+# -------------------------------------------------------------------- citation
+# The pilot does not call the citation auditor. A writer's claimed citations are
+# accepted after structural validation -- the label was offered, the memory is
+# active, duplicates collapsed -- and nothing else. See docs/pilot-scope.md.
+citation_mode: claimed_validated
+
+# ------------------------------------------------------------ model-call limits
+model_call_limits:
+  writer_calls_per_cycle: 6
+  summary_calls_per_cycle: 2
+  evaluator_calls_per_cycle: 0
+  interview_calls_per_cycle: 0
+  interview_calls_per_checkpoint: 6
+  max_model_calls_per_run: 400
+max_parallel_model_calls: 3

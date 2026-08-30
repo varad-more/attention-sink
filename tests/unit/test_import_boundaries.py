@@ -71,6 +71,26 @@ would catch it, so it is a test.
 """
 
 
+APPLICATION_PACKAGES: dict[str, frozenset[str]] = {
+    "pilot": frozenset(
+        {
+            "attention_sink.domain",
+            "attention_sink.model_gateway",
+            "attention_sink.pilot",
+            "attention_sink.policies",
+            "attention_sink.protocol",
+        }
+    ),
+}
+"""Application package name to the internal packages it may depend on.
+
+The pilot sits above the adapter line: it is the one place allowed to know about the
+domain, the mechanisms, and the gateway at the same time, because sequencing them is
+what it is for. It still may not import an SDK -- every model call goes through the
+gateway, so a `boto3` import here would mean something had bypassed it.
+"""
+
+
 def _package_root(name: str) -> Path:
     return REPO_ROOT / "packages" / name / "attention_sink" / name
 
@@ -86,6 +106,7 @@ def _present(declared: dict[str, frozenset[str]]) -> list[str]:
 
 PRESENT = _present(PURE_PACKAGES)
 PRESENT_ADAPTERS = _present(ADAPTER_PACKAGES)
+PRESENT_APPLICATIONS = _present(APPLICATION_PACKAGES)
 
 
 def _imported_modules(source: Path) -> set[str]:
@@ -153,3 +174,40 @@ def test_adapters_do_not_import_the_mechanism_they_serve(name: str):
                 offenders.append(f"{source.relative_to(REPO_ROOT)} imports {module}")
 
     assert not offenders, "an adapter reached across the line: " + "; ".join(offenders)
+
+
+def test_at_least_one_application_package_is_present():
+    assert PRESENT_APPLICATIONS, "no application package exists; the check would be vacuous"
+
+
+@pytest.mark.parametrize("name", PRESENT_APPLICATIONS)
+def test_applications_reach_a_provider_only_through_the_gateway(name: str):
+    offenders: list[str] = []
+    for source in sorted(_package_root(name).rglob("*.py")):
+        banned = sorted(
+            module
+            for module in _imported_modules(source)
+            if module.split(".")[0] in BANNED_TOP_LEVEL
+        )
+        offenders.extend(f"{source.relative_to(REPO_ROOT)} imports {m}" for m in banned)
+
+    assert not offenders, (
+        "an application package imported a provider SDK directly, which means a model "
+        "call bypassed the gateway: " + "; ".join(offenders)
+    )
+
+
+@pytest.mark.parametrize("name", PRESENT_APPLICATIONS)
+def test_application_dependencies_stay_inside_the_project(name: str):
+    allowed = APPLICATION_PACKAGES[name]
+    offenders: list[str] = []
+    for source in sorted(_package_root(name).rglob("*.py")):
+        for module in sorted(_imported_modules(source)):
+            if not module.startswith("attention_sink."):
+                continue
+            if not any(module == p or module.startswith(f"{p}.") for p in allowed):
+                offenders.append(f"{source.relative_to(REPO_ROOT)} imports {module}")
+
+    assert not offenders, "an application package imported something undeclared: " + "; ".join(
+        offenders
+    )

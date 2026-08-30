@@ -8,6 +8,9 @@ license = { text = "Apache-2.0" }
 
 dependencies = [
     "pydantic>=2.9,<3",
+    # The pilot's protocol files are YAML because they are edited and reviewed by
+    # people. Nothing below the adapter line reads them; only attention_sink.pilot does.
+    "pyyaml>=6.0,<7",
 ]
 
 [project.optional-dependencies]
@@ -28,6 +31,7 @@ dev = [
     "boto3>=1.40,<2",
     "strands-agents>=1.0,<2",
     "boto3-stubs[bedrock-runtime]>=1.40,<2",
+    "types-PyYAML>=6.0,<7",
 ]
 
 [build-system]
@@ -48,12 +52,14 @@ only-include = ["packages"]
 sources = [
     "packages/domain",
     "packages/model_gateway",
+    "packages/pilot",
     "packages/policies",
     "packages/protocol",
 ]
 dev-mode-dirs = [
     "packages/domain",
     "packages/model_gateway",
+    "packages/pilot",
     "packages/policies",
     "packages/protocol",
 ]
@@ -83,10 +89,14 @@ branch = true
 source = [
     "packages/domain/attention_sink",
     "packages/model_gateway/attention_sink",
+    "packages/pilot/attention_sink",
     "packages/policies/attention_sink",
     "packages/protocol/attention_sink",
 ]
-omit = ["*/__init__.py"]
+# Re-export surfaces and process entry points. Neither holds behaviour: a
+# `__main__` that only calls `main()` would be measured as a gap that no test can
+# honestly close, since testing it means starting a subprocess to assert nothing.
+omit = ["*/__init__.py", "*/__main__.py"]
 
 [tool.coverage.report]
 show_missing = true
@@ -107,6 +117,7 @@ target-version = "py312"
 src = [
     "packages/domain",
     "packages/model_gateway",
+    "packages/pilot",
     "packages/policies",
     "packages/protocol",
     "scripts",
@@ -159,7 +170,7 @@ warn_unreachable = true
 disallow_any_unimported = true
 namespace_packages = true
 explicit_package_bases = true
-mypy_path = "packages/domain:packages/model_gateway:packages/policies:packages/protocol"
+mypy_path = "packages/domain:packages/model_gateway:packages/pilot:packages/policies:packages/protocol"
 files = ["packages", "scripts", "tests"]
 
 # Strictness is mandatory below the adapter line; in tests it only adds noise to

@@ -184,7 +184,112 @@ which is exactly what acceptance criterion 1 - no model interaction bypasses a t
 gateway - forbids. Fixture responses are now produced by `FixtureInvoker` behind the
 same adapters production uses.
 
-## Phase 4 and later
+## Pilot Phase 4 - The canonical pilot protocol and a complete local six-arm cycle engine
+
+**Status: complete.**
+
+Run under the Pilot Scope Override, which takes priority over conflicting requirements
+in the original production-scale brief. What it narrows, and why, is
+`docs/pilot-scope.md`; the architectural half is
+`docs/adr/ADR-008-pilot-snapshot-architecture.md`.
+
+### Audit of Phases 1-3 against the override
+
+Performed before anything was written. Six of the seven named incompatibilities were
+already satisfied by the existing implementation and nothing was rebuilt or deleted:
+
+- **Policy labels in prompts.** Already prevented. Memories are presented under
+  per-request labels (ADR-010) and `assert_policy_blind` runs on the system turn at
+  render and on the data turn on every attempt.
+- **Framework-managed memory.** Already prevented. `StrandsInvoker.build_agent`
+  constructs a fresh agent per call with `messages=[]` and a `NullConversationManager`.
+- **Production fallback to fixture data.** Already refused, twice: in
+  `GatewaySettings.from_env` and again in `build_gateway`.
+- **Non-configurable model identifiers.** Already impossible. No default is compiled
+  in and the identifier is always passed explicitly.
+- **Exact token counting.** Already present, with no fallback to the heuristic outside
+  fixture mode (ADR-011).
+- **Dreamer lineage.** The Dreamer is `arm_summary`, and its lineage is the domain's
+  existing summary lineage: `MemoryKind.SUMMARY`, at least two `parent_memory_ids`,
+  and a `MemoryLineageEdge` per compressed source. Nothing was missing; the pilot
+  supplies the parameters and adds no second mechanism.
+- **Mandatory citation-auditor calls.** Not present in Phases 1-3, because nothing
+  sequenced a cycle. It became a Phase 4 design constraint instead, and the engine
+  makes no auditor call at all.
+
+Two pieces of existing capability the pilot does not use are configured off rather
+than removed: the two reference arms (`arm_full`, `arm_stateless`) are simply not in
+`protocol.arms`, and the citation auditor stays fully implemented in the gateway
+behind `CitationMode.AUDITED`, which the engine refuses rather than silently
+downgrades.
+
+### Delivered
+
+- `experiments/pilot/` - five machine-readable protocol files and one predictions
+  document. The Station Kestrel seed world (twelve memories), a twenty-four stimulus
+  deck across five phases, a twelve-fact truth ledger, a ten-question checkpoint
+  interview, and the protocol that binds them. Every file carries a schema version, a
+  protocol version, a status, a title, a description, a creation time, and a digest of
+  its own content.
+- `packages/pilot` - the application service. Protocol loading, cross-file validation,
+  calibration, and freezing; a typed `PilotRunConfiguration`; a per-cycle and per-run
+  model-call budget; immutable `RunSnapshot` and `ArmCycleSnapshot` records with
+  canonical-JSON digests; the cycle engine; the local export; and the commands.
+- Protocol lifecycle enforced by the commands rather than by convention. `DRAFT` may
+  not run canonically, `freeze` refuses an uncalibrated budget, and a frozen file
+  edited afterwards is detected by recomputing its digest. The digest covers parsed
+  content, so reflowing YAML is not a modification and changing a stimulus is.
+- The cycle engine: verify the cycle is next, load the one shared stimulus, generate
+  six arms with bounded concurrency, validate every claimed citation against the
+  arm's own state, fold the survivors into the statistics, admit the candidate, apply
+  the mechanism, call the Dreamer only for a plan the mechanism emitted, stage all six
+  results, check them across arms, and advance in a single assignment. An arm that
+  fails leaves all six states exactly as they were.
+- Model-call ceilings checked _before_ each call: six writers and at most two Dreamer
+  summaries per cycle, no evaluator and no interviewer; six interviewers per
+  checkpoint; a whole-run cap on top.
+- `make pilot-validate`, `pilot-calibrate`, `pilot-freeze`, `pilot-local-cycle`,
+  `pilot-local-run`, and `pilot-local-export`.
+
+### Verified results
+
+The 24-cycle fixture run, executed:
+
+- 144 cycle snapshots (6 arms x 24 cycles), 18 checkpoint records (6 arms x 3
+  checkpoints), 171 model calls: 144 writer, 18 interviewer, 9 Dreamer summary. Zero
+  evaluator and zero auditor calls.
+- Seed set 157 budget tokens under `heuristic-v1`; budget calibrated to 240.
+- Every arm ended within budget and every arm forgot something. Final active tokens:
+  `arm_fifo` 234, `arm_lru` 238, `arm_heavy` 238, `arm_sink` 240, `arm_random` 231,
+  `arm_summary` 221; retired counts 18, 17, 17, 17, 19, and 28 respectively. The six
+  state hashes differ, which is the whole point of the run.
+- The export writes ten files plus `checksums.sha256`, which `sha256sum -c` verifies.
+
+### Test and coverage position
+
+- 790 tests: unit, Hypothesis property, and integration. 787 run; the three Bedrock
+  contract tests are skipped unless `AS_BEDROCK_CONTRACT_TESTS=1`. 184 are new in this
+  phase: 181 across ten `test_pilot_*` modules, and three added to the import-boundary
+  suite for the new application package.
+- **99%** of `packages/pilot`, gated at 95% in `make test` alongside the other three.
+  All four packages pass their own gate.
+
+### Deliberately not delivered in this phase
+
+- No persistence. The engine holds the run in memory; the export writes files and
+  nothing reads them back. There is no DynamoDB, no S3, and no projection.
+- No public API, no WebSocket, no CDK resource, and no deployment.
+- No metrics computation. The truth ledger and the interview protocol define what
+  would be scored; nothing scores it yet. The autobiography at cycle 24 is produced
+  and stored, not graded.
+- No evaluator or citation-auditor calls on the cycle path. Both adapters exist and
+  are tested; the pilot protocol declares an allowance of zero for each.
+- No forks and no moderation.
+- The Lambda orchestrator named in ADR-008-pilot as the deployment target is not
+  built. The engine is persistence-independent so that it can be, but this phase runs
+  it locally only.
+
+## Phase 5 and later
 
 Not started: persistence and the event ledger, Step Functions orchestration, metrics
 computation, public API, WebSocket, forks, moderation, CDK resources, deployment, and

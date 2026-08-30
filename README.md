@@ -63,6 +63,22 @@ and every model identifier. A production runtime may not run on fixtures at all.
 make test-contract   # opt-in checks against real Bedrock; costs money, skipped by default
 ```
 
+## Running the pilot
+
+The whole 24-cycle experiment runs locally, on fixtures, in about a second:
+
+```bash
+make pilot-validate      # do the protocol files agree, and has any frozen one been edited?
+make pilot-local-run     # six arms, 24 cycles, exported to .pilot-runs/local
+```
+
+The export carries a `checksums.sha256` that `sha256sum -c` verifies, and everything in
+it is marked simulated. Editing the protocol means `make pilot-calibrate` and
+`make pilot-freeze` before a run will start again: a canonical run refuses draft files,
+and a frozen file edited afterwards is detected rather than run.
+
+See [docs/pilot-scope.md](docs/pilot-scope.md) for what the pilot narrows and why.
+
 ## Repository layout
 
 ```
@@ -81,6 +97,7 @@ tests/               unit, property, integration, e2e
 - [Implementation status](docs/implementation-status.md) - what is built, and what is not
 - [Memory policies](docs/memory-policies.md) - the exact algorithm and tie-breaker for every arm
 - [Model gateway](docs/model-gateway.md) - the seven model roles, prompts and their digests, schemas, failures, and metadata
+- [Pilot scope](docs/pilot-scope.md) - what the 24-cycle pilot runs, and where it narrows the production design
 - [System context](docs/architecture/system-context.md)
 - [Container view](docs/architecture/container-view.md)
 - [Architecture decision records](docs/adr/)

@@ -17,3 +17,8 @@ make us revisit it. Superseded records stay in place; they are not deleted.
 | [009](009-two-stage-compression.md)                                   | Compression is policy-planned and model-written, in two stages |
 | [010](010-opaque-memory-labels-in-prompts.md)                         | Models see memories under opaque per-request labels            |
 | [011](011-exact-token-counts-in-production.md)                        | Production budgets use the model's own token counts            |
+| [008-pilot](ADR-008-pilot-snapshot-architecture.md)                   | Pilot V1 runs one cycle engine over immutable snapshots        |
+
+`ADR-008-pilot` shares a number with `ADR-008` and is unrelated to it. The name is
+fixed by the Pilot Scope Override; the suffix is what keeps the two citable apart. See
+the note at the top of that record.

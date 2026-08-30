@@ -6,7 +6,9 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 .PHONY: help bootstrap format lint typecheck test test-unit test-property \
-	test-integration test-contract test-web synth dev verify clean simulate
+	test-integration test-contract test-web synth dev verify clean simulate \
+	pilot-validate pilot-calibrate pilot-freeze pilot-local-cycle pilot-local-run \
+	pilot-local-export
 
 UV ?= uv
 NPM ?= npm
@@ -51,9 +53,36 @@ test: ## All Python tests, with coverage, gated per package
 	$(UV) run coverage report --include='packages/domain/*' --fail-under=95
 	$(UV) run coverage report --include='packages/policies/*' --fail-under=95
 	$(UV) run coverage report --include='packages/model_gateway/*' --fail-under=95
+	$(UV) run coverage report --include='packages/pilot/*' --fail-under=95
 
 simulate: ## Run the policy simulator against a fixture (FIXTURE=path)
 	$(UV) run python scripts/simulate_policy.py $(FIXTURE)
+
+# ---------------------------------------------------------------------------
+# The pilot. Order matters: validate, calibrate, freeze, then run. A canonical
+# run refuses to start from draft files, and freezing refuses an uncalibrated
+# budget, so the sequence is enforced by the commands rather than by this file.
+# ---------------------------------------------------------------------------
+PILOT ?= $(UV) run python -m attention_sink.pilot
+PILOT_OUT ?= .pilot-runs/local
+
+pilot-validate: ## Check the pilot protocol files agree, and detect any edited after freezing
+	$(PILOT) validate
+
+pilot-calibrate: ## Count the seed world and write the active-memory budget it implies
+	$(PILOT) calibrate
+
+pilot-freeze: ## Seal the protocol files: write their digests and mark them frozen
+	$(PILOT) freeze
+
+pilot-local-cycle: ## Run one fixture cycle across all six arms
+	$(PILOT) run --cycles 1
+
+pilot-local-run: ## Run the full 24-cycle fixture experiment and export it
+	$(PILOT) run --cycles 24 --out $(PILOT_OUT)
+
+pilot-local-export: ## Run the full fixture experiment into a chosen directory (PILOT_OUT=path)
+	$(PILOT) run --cycles 24 --out $(PILOT_OUT)
 
 test-contract: ## Opt-in contract tests against real Bedrock (costs money, needs credentials)
 	AS_BEDROCK_CONTRACT_TESTS=1 $(UV) run pytest tests/integration/test_bedrock_contract.py -m integration

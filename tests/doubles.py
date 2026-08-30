@@ -18,6 +18,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from attention_sink.model_gateway import (
+    FixtureInvoker,
     GatewaySettings,
     ModelGateway,
     RawResponse,
@@ -156,3 +157,61 @@ def _next[T](script: list[T | BaseException], index: int, what: str) -> T:
     if isinstance(entry, BaseException):
         raise entry
     return entry
+
+
+@dataclass
+class RecordingInvoker:
+    """Answers exactly as the fixture invoker does, and keeps every request.
+
+    A wrapper rather than a second fake, so a test that inspects what reached a model
+    is inspecting the same bytes a local run actually sends. Used by the blindness
+    tests, which have to assert about the rendered prompt itself.
+    """
+
+    inner: FixtureInvoker = field(default_factory=FixtureInvoker)
+    calls: list[RecordedCall] = field(default_factory=list)
+
+    def invoke[T: BaseModel](
+        self,
+        *,
+        model_id: str,
+        system: str,
+        user: str,
+        output_model: type[T],
+        temperature: float,
+        top_p: float,
+        max_tokens: int,
+    ) -> RawResponse[T]:
+        """Record the request, then answer it deterministically."""
+        self.calls.append(
+            RecordedCall(
+                model_id=model_id,
+                system=system,
+                user=user,
+                output_model=output_model,
+                temperature=temperature,
+                top_p=top_p,
+                max_tokens=max_tokens,
+            )
+        )
+        return self.inner.invoke(
+            model_id=model_id,
+            system=system,
+            user=user,
+            output_model=output_model,
+            temperature=temperature,
+            top_p=top_p,
+            max_tokens=max_tokens,
+        )
+
+    @property
+    def texts(self) -> list[str]:
+        """Both turns of every recorded request, concatenated."""
+        return [f"{call.system}\n{call.user}" for call in self.calls]
+
+
+def recording_gateway() -> tuple[ModelGateway, RecordingInvoker]:
+    """A fixture-mode gateway that keeps every request it sends."""
+    invoker = RecordingInvoker()
+    gateway = build_gateway(GatewaySettings.from_env(env={}), invoker=invoker)
+    return gateway, invoker

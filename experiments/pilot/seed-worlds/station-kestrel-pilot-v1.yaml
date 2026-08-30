@@ -1,0 +1,153 @@
+# Station Kestrel - the twelve memories every arm begins with.
+#
+# Identical across all six arms. `token_count` is written by `make pilot-calibrate`
+# with the counter the run will actually be measured by; it is null in a draft
+# because a budget denominated in one counter's tokens and measured with another
+# is not a budget.
+#
+# Everything below `text` is protocol metadata. None of it reaches a writer prompt:
+# the writer is shown a per-request label and the text, and nothing else.
+schema_version: 1
+protocol_version: pilot-v1
+seed_world_version: station-kestrel-pilot-v1
+status: frozen
+title: Station Kestrel
+description: >-
+  Twelve seed memories establishing Mara Venn, her brother Ivo, the blue key, the
+  warning about the northern door, and the station's stopped clocks.
+created_at: '2026-08-29T00:00:00Z'
+content_hash: 'sha256:b84616a77c10b955613b520cc3aa0385b279e6e57ce0a64caa0375871005699a'
+counter_version: heuristic-v1
+
+memories:
+  - memory_id: seed_01
+    text: My name is Mara Venn.
+    fact_ids: [F01]
+    category: identity
+    importance: critical
+    initial_position: 1
+    entities: [Mara Venn]
+    token_count: 6
+    pinned_eligible: true
+    content_hash: 'sha256:6232b51391d3d3d465002c8f811bd8b37b8668630675199af1ed6cdf93f51ce1'
+
+  - memory_id: seed_02
+    text: I came down into Station Kestrel to find Ivo.
+    fact_ids: [F02]
+    category: motive
+    importance: critical
+    initial_position: 2
+    entities: [Mara Venn, Ivo, Station Kestrel]
+    token_count: 11
+    pinned_eligible: false
+    content_hash: 'sha256:a1f1d4bfde472ed6238b69baeb2ccc37d214e2e8aa2127a4773ef61410d7a5eb'
+
+  - memory_id: seed_03
+    text: Ivo is my younger brother.
+    fact_ids: [F03]
+    category: relation
+    importance: critical
+    initial_position: 3
+    entities: [Mara Venn, Ivo]
+    token_count: 7
+    pinned_eligible: false
+    content_hash: 'sha256:426a203705bcebacb7213a6654b663fed382c098d407eade5143496c4ab7412c'
+
+  - memory_id: seed_04
+    text: I carry a blue key. My mother put it into my hand before I left.
+    fact_ids: [F04]
+    category: object
+    importance: high
+    initial_position: 4
+    entities: [Mara Venn, blue key, mother]
+    token_count: 19
+    pinned_eligible: false
+    content_hash: 'sha256:74926100851b6266d4ebc5c522e620106c5b5fcc7a5eb51a868e92d6600729a4'
+
+  - memory_id: seed_05
+    text: I was warned not to open the northern door before 03:17.
+    fact_ids: [F05]
+    category: warning
+    importance: high
+    initial_position: 5
+    entities: [northern door]
+    token_count: 15
+    pinned_eligible: false
+    content_hash: 'sha256:2a1553331a30ccd4ec38e95836c317ffab7e0df799821a59bd150684f06f740c'
+
+  - memory_id: seed_06
+    text: Station Kestrel lies beneath an abandoned observatory.
+    fact_ids: [F06]
+    category: place
+    importance: medium
+    initial_position: 6
+    entities: [Station Kestrel, observatory]
+    token_count: 14
+    pinned_eligible: false
+    content_hash: 'sha256:61483d5c9413cb50df2ce4dded4fef33561cfd08dd8c93e89916f15f93f1cdad'
+
+  - memory_id: seed_07
+    text: Every clock in the station shows 03:17.
+    fact_ids: [F07]
+    category: anomaly
+    importance: high
+    initial_position: 7
+    entities: [Station Kestrel]
+    token_count: 12
+    pinned_eligible: false
+    content_hash: 'sha256:82ef1e7d595c83a108cc85ef4120750c169f1c5a0be6fea52268ab5ddbf65a3e'
+
+  - memory_id: seed_08
+    text: The station announcements sometimes carry false instructions.
+    fact_ids: [F08]
+    category: reliability
+    importance: high
+    initial_position: 8
+    entities: [Station Kestrel]
+    token_count: 18
+    pinned_eligible: false
+    content_hash: 'sha256:78be1b1e484e809a78e2e469ebd70b91b4bf96e207fc23a0df9e16bff845bd9c'
+
+  - memory_id: seed_09
+    text: My name has been erased from the crew manifest.
+    fact_ids: [F09]
+    category: identity
+    importance: high
+    initial_position: 9
+    entities: [Mara Venn, crew manifest]
+    token_count: 12
+    pinned_eligible: false
+    content_hash: 'sha256:0d6ac5f18e794beaa105080731e4afea3daed02a5ed338beed022af62f282f3f'
+
+  - memory_id: seed_10
+    text: I promised to follow Ivo's radio signal.
+    fact_ids: [F10]
+    category: promise
+    importance: critical
+    initial_position: 10
+    entities: [Mara Venn, Ivo, radio]
+    token_count: 12
+    pinned_eligible: false
+    content_hash: 'sha256:00653ef2857c4e4725971e2710c4cb16b2e16a456621aa0c9dbc63b3135d8e51'
+
+  - memory_id: seed_11
+    text: I do not know whether the voice on the radio is truly Ivo.
+    fact_ids: [F11]
+    category: uncertainty
+    importance: high
+    initial_position: 11
+    entities: [Ivo, radio]
+    token_count: 17
+    pinned_eligible: false
+    content_hash: 'sha256:6556b7e6cdf29860ab33e4c5487e82ee2e192164c9c621d9987efaa88f5ac697'
+
+  - memory_id: seed_12
+    text: I fear forgetting Ivo more than I fear staying here.
+    fact_ids: [F12]
+    category: fear
+    importance: critical
+    initial_position: 12
+    entities: [Mara Venn, Ivo]
+    token_count: 14
+    pinned_eligible: false
+    content_hash: 'sha256:82d73050e9acd7fa475e9b80b73fc5aeb0b30b40db3d9dca158e8fc91e3b3e3a'

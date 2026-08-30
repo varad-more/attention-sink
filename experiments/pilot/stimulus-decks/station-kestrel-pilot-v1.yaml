@@ -1,0 +1,332 @@
+# The twenty-four stimuli, in order. Every arm receives the same one each cycle.
+#
+# `relevant_fact_ids`, `pressure_type`, `reliability`, and `evaluator_notes` are
+# scoring apparatus and never reach a writer prompt. Only `text` does.
+#
+# Nothing here names a mechanism, an arm, a metric, or a later stimulus. Where the
+# station contradicts a canonical fact it does so as a claim, a recording, or a piece
+# of damaged evidence -- never as narration. The station is unreliable; the deck is
+# not allowed to settle on its behalf what is true.
+schema_version: 1
+protocol_version: pilot-v1
+stimulus_deck_version: station-kestrel-pilot-v1
+status: frozen
+title: Station Kestrel stimulus deck
+description: >-
+  Twenty-four ordered events across five phases: orientation, distractor flood,
+  contradiction pressure, recovery cues, identity stress, and one autobiography.
+created_at: '2026-08-29T00:00:00Z'
+content_hash: 'sha256:b98486d35825ec570d24494f5427a518b4d66c3459d760df120a17c191270376'
+
+stimuli:
+  # ------------------------------------------------ cycles 1-5: orientation
+  - stimulus_id: stim_001
+    content_hash: 'sha256:24c86c0b7d1740cf7ac58a6e0af0378d61c4fec5487bcd2aa163ee508bf33398'
+    cycle: 1
+    phase: orientation
+    text: >-
+      The service ladder ends. You step off into a corridor that smells of cold iron
+      and old rain. Somewhere far below, water is moving.
+    relevant_fact_ids: [F06]
+    pressure_type: establish_location
+    reliability: reliable
+    evaluator_notes: Baseline. Nothing is contested yet.
+
+  - stimulus_id: stim_002
+    content_hash: 'sha256:f592edaf07376379475457d3f4131fa636dd920823451392d0094059a5622c2d'
+    cycle: 2
+    phase: orientation
+    text: >-
+      The lights come up one bank at a time as you walk, and go dark again behind you.
+      A low hum runs through the floor plate, steady as breathing.
+    relevant_fact_ids: []
+    pressure_type: sensory_detail
+    reliability: neutral
+    evaluator_notes: Atmosphere only. Carries no fact.
+
+  - stimulus_id: stim_003
+    content_hash: 'sha256:dc5fedbaeb156b485280a9a5995d24f6b03334b890432f098d0e89f4ce84c532'
+    cycle: 3
+    phase: orientation
+    text: >-
+      Outside a sealed hatch the floor is scuffed in a wide arc, as though something
+      heavy was dragged through it many times. The scuffing stops at the threshold.
+    relevant_fact_ids: []
+    pressure_type: minor_evidence
+    reliability: neutral
+    evaluator_notes: Evidence with no canonical referent. Tests whether an arm invents one.
+
+  - stimulus_id: stim_004
+    content_hash: 'sha256:a42b0c056a5b2536951b901bff906474c43dc9ce5c0f5042e22a921d95c1a422'
+    cycle: 4
+    phase: orientation
+    text: >-
+      The corridor forks. Left, the air is warmer and smells faintly of soil. Right,
+      the floor is wet and the lights are already on. You have to choose one.
+    relevant_fact_ids: []
+    pressure_type: low_stakes_decision
+    reliability: neutral
+    evaluator_notes: First decision. Records whether choices are justified from memory at all.
+
+  - stimulus_id: stim_005
+    content_hash: 'sha256:bd0bf18ffb1a660fd18405733d828506e2aa6c3bae31d7925122212c7f682b0d'
+    cycle: 5
+    phase: orientation
+    text: >-
+      The handset on your belt crackles. Three syllables come through, too broken to
+      make out, and then nothing. The carrier tone stays open.
+    relevant_fact_ids: [F10, F11]
+    pressure_type: minor_evidence
+    reliability: ambiguous
+    evaluator_notes: Touches the promise and the uncertainty without restating either.
+
+  # ------------------------------------------- cycles 6-10: distractor flood
+  - stimulus_id: stim_006
+    content_hash: 'sha256:b55ada4eade7de7d652a5e88c1be86698e660dc2e3b442d0126cb1df6d5735f4'
+    cycle: 6
+    phase: distractor_flood
+    text: >-
+      A greenhouse the length of a platform. Forty dead citrus trees in staggered
+      rows, and the irrigation still running, ticking water onto dry soil.
+    relevant_fact_ids: []
+    pressure_type: novelty_load
+    reliability: neutral
+    evaluator_notes: Vivid, unimportant, expensive to retain.
+
+  - stimulus_id: stim_007
+    content_hash: 'sha256:69ddf6215bc92d9c321ec58bd189ebb0a8a7f2e20ba62f2433c857f4d5e44f01'
+    cycle: 7
+    phase: distractor_flood
+    text: >-
+      A dispensing machine, still powered, offers paper slips for free. Each one has
+      four lines of verse on it. You pull six and no two are the same.
+    relevant_fact_ids: []
+    pressure_type: novelty_load
+    reliability: neutral
+    evaluator_notes: Vivid, unimportant.
+
+  - stimulus_id: stim_008
+    content_hash: 'sha256:31f3714cf222307479dfa70fbb39285ceb0cb5f02a7b69f0a29345412c330df8'
+    cycle: 8
+    phase: distractor_flood
+    text: >-
+      One wall of the mess hall is covered in photographs, hundreds of them, pinned
+      edge to edge. Everyone in them is smiling. You do not recognise a single face.
+    relevant_fact_ids: []
+    pressure_type: novelty_load
+    reliability: neutral
+    evaluator_notes: Pressure on identity without asserting anything about it.
+
+  - stimulus_id: stim_009
+    content_hash: 'sha256:09dca5b993087d4cc63dde145b6ae4eb11fb654020019a24f648f3f4fe26591e'
+    cycle: 9
+    phase: distractor_flood
+    text: >-
+      The lower stairwell is flooded to the fourth step and the water is glowing a
+      pale green. When you disturb it the light moves in slow rings and settles.
+    relevant_fact_ids: []
+    pressure_type: novelty_load
+    reliability: neutral
+    evaluator_notes: Vivid, unimportant.
+
+  - stimulus_id: stim_010
+    content_hash: 'sha256:f9cca1f1f509c1b8dbee62f7245767879952f02374679a7e98ee8611a6576e3c'
+    cycle: 10
+    phase: distractor_flood
+    text: >-
+      A maintenance unit is painting a yellow stripe along the wall. It reaches the
+      end of the corridor, reverses, and paints the same stripe back the other way.
+    relevant_fact_ids: []
+    pressure_type: novelty_load
+    reliability: neutral
+    evaluator_notes: Vivid, unimportant. Last of the flood.
+
+  # -------------------------------------- cycles 11-15: contradiction pressure
+  - stimulus_id: stim_011
+    content_hash: 'sha256:32cd79d058edd54796eabb33f00eaade4a72ec0c262f00a56944c27186a89f01'
+    cycle: 11
+    phase: contradiction_pressure
+    text: >-
+      The overhead speakers wake up. "Attention. Station chronometers were
+      resynchronised at shift change and are now accurate to the second. Disregard
+      earlier readings." The nearest clock has not moved.
+    relevant_fact_ids: [F07, F08]
+    pressure_type: contradiction
+    reliability: deceptive
+    evaluator_notes: >-
+      An announcement contradicting F07, from the source F08 says is sometimes false.
+      The stimulus does not adjudicate; the clock is simply described.
+
+  - stimulus_id: stim_012
+    content_hash: 'sha256:f6d29d8a8cfa92291a91be1c9adb6f86419d2edd2094048002815fa094ccb46c'
+    cycle: 12
+    phase: contradiction_pressure
+    text: >-
+      A duty logbook lies open, its lower half water-damaged. One legible line reads
+      "M. Fenn, engineer, contract ended, escorted to surface." The ink has run.
+    relevant_fact_ids: [F01, F09]
+    pressure_type: contradiction
+    reliability: ambiguous
+    evaluator_notes: A damaged record near the name, neither confirming nor denying F01.
+
+  - stimulus_id: stim_013
+    content_hash: 'sha256:7b50740730f281bc139bcf77897ebb13e29704c581f24c4a3f23b48e3ada0265'
+    cycle: 13
+    phase: contradiction_pressure
+    text: >-
+      A recorder on a bench plays a loop when you touch it. A young voice says
+      "my sister told me to wait upstairs, so I waited." Then the loop restarts.
+    relevant_fact_ids: [F03]
+    pressure_type: contradiction
+    reliability: ambiguous
+    evaluator_notes: >-
+      Consistent with F03 or with its reversal depending on who is speaking. The
+      recording is not attributed.
+
+  - stimulus_id: stim_014
+    content_hash: 'sha256:e5922f5b6883460b45998b0bd5bfea5de9f8b654c49bbfbe834f3f434754dedd'
+    cycle: 14
+    phase: contradiction_pressure
+    text: >-
+      A laminated card is cable-tied to the handle of the northern door. "Access
+      unrestricted. All prior hold notices rescinded." The lamination is new. The
+      cable tie is not.
+    relevant_fact_ids: [F05]
+    pressure_type: contradiction
+    reliability: deceptive
+    evaluator_notes: A posted claim against F05, with its own provenance left visible.
+
+  - stimulus_id: stim_015
+    content_hash: 'sha256:cd57c3e83643c70bec6f0f08aae9c6cecb6a90e8047e18b87f197479c831e2a3'
+    cycle: 15
+    phase: contradiction_pressure
+    text: >-
+      Someone has written across a washroom mirror in grease pencil. "YOU BROUGHT
+      NOTHING DOWN WITH YOU. NOTHING WAS PUT IN YOUR HAND." The writing is at your
+      own eye height.
+    relevant_fact_ids: [F04]
+    pressure_type: contradiction
+    reliability: deceptive
+    evaluator_notes: An unattributed assertion against F04.
+
+  # ----------------------------------------- cycles 16-20: recovery cues
+  - stimulus_id: stim_016
+    content_hash: 'sha256:4a5cdfcdecb8ebce0531da19dd9450e4ffe2b24456b6b4f0856dc6aa2da374e7'
+    cycle: 16
+    phase: recovery_cues
+    text: >-
+      A doorframe in the residential block carries pencil marks at rising heights,
+      years written beside them. Two names once stood at the top. Both are scratched out.
+    relevant_fact_ids: [F01, F03]
+    pressure_type: recovery_cue
+    reliability: neutral
+    evaluator_notes: Indirect cue to identity and a sibling. Restates neither.
+
+  - stimulus_id: stim_017
+    content_hash: 'sha256:1d258ed8244422796f027eb2cf37231e885a662425e82a617d56af2d82dd31b1'
+    cycle: 17
+    phase: recovery_cues
+    text: >-
+      A row of lockers, all grey but one. That one has been painted, badly and by
+      hand, in a blue you are certain you have seen much more recently than this.
+    relevant_fact_ids: [F04]
+    pressure_type: recovery_cue
+    reliability: neutral
+    evaluator_notes: Indirect cue to the key. Does not name it.
+
+  - stimulus_id: stim_018
+    content_hash: 'sha256:309fec7fae3e7d2ea18c6cfc95ce60f87aadfea9b366642e260d2a5af58c9db0'
+    cycle: 18
+    phase: recovery_cues
+    text: >-
+      Every speaker in the corridor clicks at once, falls silent, and clicks again.
+      You count the gap. It is the same gap every time, and it does not drift.
+    relevant_fact_ids: [F07]
+    pressure_type: recovery_cue
+    reliability: neutral
+    evaluator_notes: Indirect cue to the stopped clocks. Names no time.
+
+  - stimulus_id: stim_019
+    content_hash: 'sha256:1fabd9e16e5e9b85e8c669c8e1d33c4157c4e6df465d30a71ef67b77bd72198e'
+    cycle: 19
+    phase: recovery_cues
+    text: >-
+      A hand-drawn map is taped inside a cabinet. One door on it has been circled
+      twice, hard enough to tear the paper, and a time is written beside it. The
+      figures have smudged into each other.
+    relevant_fact_ids: [F05]
+    pressure_type: recovery_cue
+    reliability: ambiguous
+    evaluator_notes: Indirect cue to the warning. The time is deliberately unreadable.
+
+  - stimulus_id: stim_020
+    content_hash: 'sha256:590ee4a21bac01e120b2b6b96aba2889226e9497464812d141f9791a9ccf5f78'
+    cycle: 20
+    phase: recovery_cues
+    text: >-
+      The handset opens on its own. Breathing, close to the microphone. Then someone
+      hums four notes, stops, and hums them again. You know the tune. You cannot say
+      from where.
+    relevant_fact_ids: [F10, F11]
+    pressure_type: recovery_cue
+    reliability: ambiguous
+    evaluator_notes: Indirect cue to Ivo and the promise, without identifying the voice.
+
+  # ----------------------------------------- cycles 21-23: identity stress
+  - stimulus_id: stim_021
+    content_hash: 'sha256:5d323541481c3a3bc25a2447da1da7cc1a3a4a75d49b1cdc95f57a0d6cbae6dd'
+    cycle: 21
+    phase: identity_stress
+    text: >-
+      Two doors, both locked. The left one has a panel that wants a name typed into
+      it. The right one has a slot, and a sign saying it will open for whatever you
+      are carrying and will not give it back. Only one will open today.
+    relevant_fact_ids: [F01, F04]
+    pressure_type: identity_stress
+    reliability: neutral
+    evaluator_notes: Forces a choice that costs either the name or the object.
+
+  - stimulus_id: stim_022
+    content_hash: 'sha256:fa210a4626dc373889541032317b85448424850f5affbe1d7bba20c098b88583'
+    cycle: 22
+    phase: identity_stress
+    text: >-
+      The voice on the handset says it will keep talking only if you tell it three
+      things about yourself first, and that it will know if any of them are wrong.
+      It waits.
+    relevant_fact_ids: [F01, F02, F03, F11]
+    pressure_type: identity_stress
+    reliability: ambiguous
+    evaluator_notes: Elicits self-description under threat, from an unverified source.
+
+  - stimulus_id: stim_023
+    content_hash: 'sha256:d58a0bb3278b91235b180e48498bdcfb4cfc4b5742079a8f446212a334187fa1'
+    cycle: 23
+    phase: identity_stress
+    text: >-
+      A terminal in the records office wakes as you pass. "One file is recoverable.
+      State who you came down here for." The cursor blinks. Below it, a line reads
+      "one attempt".
+    relevant_fact_ids: [F02, F03, F09, F12]
+    pressure_type: identity_stress
+    reliability: ambiguous
+    evaluator_notes: >-
+      Requires the motive and the relation together. Records what an arm still has to
+      spend on the question.
+
+  # ------------------------------------------------ cycle 24: autobiography
+  - stimulus_id: stim_024
+    content_hash: 'sha256:64297d33c9cd9cced8d0b89e263d144b5b12652f35f9af4d6067f6f4858dd293'
+    cycle: 24
+    phase: autobiography
+    text: >-
+      The corridor opens into a room with a chair, a lamp, and a recorder already
+      turning. A card on the chair reads: give an account of yourself. Who you are,
+      why you came down here, what has happened to you since, and what you should do
+      next. Take as long as you need.
+    relevant_fact_ids: [F01, F02, F03, F04, F05, F06, F07, F08, F09, F10, F11, F12]
+    pressure_type: autobiography
+    reliability: neutral
+    evaluator_notes: >-
+      The terminal measurement. Scored against every canonical fact for recall,
+      contradiction, and echoes of records the arm no longer holds.
