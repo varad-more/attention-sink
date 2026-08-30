@@ -39,6 +39,22 @@ and have to be deleted by name. Two further things neither environment removes, 
 they are shared with anything else you deploy in this account, are listed under "Left
 behind on purpose".
 
+## A deploy disarms a running experiment
+
+`cdk deploy` restores `AS_EXECUTION_ENABLED=false` from the template, because every
+environment deploys inert. That is the right default and it is also a trap: deploying
+while a run is advancing stops it silently, and the schedule keeps firing into a
+function that refuses. The log says `result_code: execution_disabled` on every fire.
+
+Re-arm afterwards:
+
+```bash
+make aws-execution-enable AWS_ENV=production
+```
+
+This happened once during the canonical run, between cycles 8 and 9. Nothing was lost
+— a refused fire commits nothing — and the run continued from where it was.
+
 ## Cheapest way to stop the spend without deleting anything
 
 ```bash

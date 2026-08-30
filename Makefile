@@ -15,7 +15,7 @@ SHELL := /bin/bash
 	pilot-local-demo pilot-local-web pilot-local-e2e pilot-local-build pilot-local-release-check \
 	aws-bundle aws-bundle-fast aws-preflight aws-bootstrap-cdk aws-deploy aws-web-build \
 	aws-status aws-cycle aws-schedule-inspect aws-schedule-enable aws-schedule-disable \
-	aws-invoke-once aws-export aws-smoke aws-destroy aws-outputs aws-bootstrap aws-verify \
+	aws-invoke-once aws-export aws-smoke aws-destroy aws-outputs aws-bootstrap aws-verify aws-cost \
 	aws-execution-inspect aws-execution-enable aws-execution-disable
 
 UV ?= uv
@@ -370,6 +370,10 @@ aws-invoke-once: ## Fire the deployed run-cycle function once, exactly as the sc
 
 aws-export: ## Write the complete dataset to the export bucket
 	$(OPERATOR) export
+
+aws-cost: ## Report what the deployed run spent, and estimate what that costs
+	$(DEPLOY_ENV) $(UV) run python scripts/cost_report.py --run-id $(AS_PILOT_RUN_ID) \
+		--stack $(STACK) $(if $(PRICES),--prices $(PRICES))
 
 aws-verify: ## Check the deployed run against every invariant it claims to satisfy
 	$(DEPLOY_ENV) $(UV) run python scripts/verify_run.py --source aws \
