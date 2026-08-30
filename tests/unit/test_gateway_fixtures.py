@@ -12,12 +12,13 @@ from strands.types.exceptions import StructuredOutputException
 
 from attention_sink.model_gateway import (
     FIXTURE_MODEL_ID,
+    FIXTURE_REGION,
     SIMULATED_PREFIX,
+    ApproximateTokenCounter,
     EvaluationOutput,
     EvaluationTask,
     FixtureEmbeddingProvider,
     FixtureInvoker,
-    FixtureTokenCounter,
     FixtureUnavailableError,
     StrandsInvoker,
     ThoughtOutput,
@@ -77,7 +78,9 @@ def test_the_fixture_reports_plausible_token_counts():
 
 
 def test_the_fixture_counter_reports_the_heuristic_and_marks_itself():
-    counter = FixtureTokenCounter()
+    counter = ApproximateTokenCounter(
+        model_id=FIXTURE_MODEL_ID, region=FIXTURE_REGION, simulated=True
+    )
 
     detailed = counter.count_detailed("four small words here")
     request = counter.count_request(system="two words", user="two more")

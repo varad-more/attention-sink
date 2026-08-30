@@ -20,6 +20,10 @@ dependencies = [
 aws = [
     "boto3>=1.40,<2",
     "strands-agents>=1.0,<2",
+    # The read-API Lambda serves the same FastAPI application the local process
+    # serves. Mangum translates one API Gateway event into one ASGI scope and does
+    # nothing else, which is exactly the amount of adapter this needs.
+    "mangum>=0.19,<1",
 ]
 api = [
     "fastapi>=0.115,<1",
@@ -39,8 +43,12 @@ dev = [
     "pre-commit>=3.8,<5",
     "boto3>=1.40,<2",
     "strands-agents>=1.0,<2",
-    "boto3-stubs[bedrock-runtime]>=1.40,<2",
+    "mangum>=0.19,<1",
+    "boto3-stubs[bedrock-runtime,dynamodb,s3]>=1.40,<2",
     "types-PyYAML>=6.0,<7",
+    # DynamoDB and S3 in-process, so the AWS adapters are proved by the same
+    # `make test` a contributor without an AWS account runs.
+    "moto[dynamodb,s3]>=5.0,<6",
 ]
 
 [build-system]
@@ -61,6 +69,7 @@ only-include = ["packages"]
 sources = [
     "packages/analysis",
     "packages/api",
+    "packages/aws",
     "packages/domain",
     "packages/model_gateway",
     "packages/persistence",
@@ -71,6 +80,7 @@ sources = [
 dev-mode-dirs = [
     "packages/analysis",
     "packages/api",
+    "packages/aws",
     "packages/domain",
     "packages/model_gateway",
     "packages/persistence",
@@ -94,6 +104,7 @@ markers = [
     "property: Hypothesis tests asserting an invariant over generated inputs",
     "integration: tests that cross a process or adapter boundary",
     "e2e: tests that drive the deployed or locally served system end to end",
+    "smoke: tests that call a real provider or a deployed stack; skipped without an explicit flag",
 ]
 
 [tool.coverage.run]
@@ -104,6 +115,7 @@ branch = true
 source = [
     "packages/analysis/attention_sink",
     "packages/api/attention_sink",
+    "packages/aws/attention_sink",
     "packages/domain/attention_sink",
     "packages/model_gateway/attention_sink",
     "packages/persistence/attention_sink",
@@ -135,6 +147,7 @@ target-version = "py312"
 src = [
     "packages/analysis",
     "packages/api",
+    "packages/aws",
     "packages/domain",
     "packages/model_gateway",
     "packages/persistence",
@@ -191,7 +204,7 @@ warn_unreachable = true
 disallow_any_unimported = true
 namespace_packages = true
 explicit_package_bases = true
-mypy_path = "packages/analysis:packages/api:packages/domain:packages/model_gateway:packages/persistence:packages/pilot:packages/policies:packages/protocol"
+mypy_path = "packages/analysis:packages/api:packages/aws:packages/domain:packages/model_gateway:packages/persistence:packages/pilot:packages/policies:packages/protocol"
 files = ["packages", "scripts", "tests"]
 
 # Strictness is mandatory below the adapter line; in tests it only adds noise to

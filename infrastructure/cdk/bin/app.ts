@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import { App, type Environment, Tags } from 'aws-cdk-lib';
 
-import { FoundationStack } from '../lib/foundation-stack.js';
+import { environmentConfig } from '../lib/environments.js';
+import { PilotStack, type ModelIdentifiers } from '../lib/pilot-stack.js';
 
 /**
  * Read the target account and Region from the ambient CDK environment.
@@ -23,12 +24,68 @@ function ambientEnvironment(): Environment | undefined {
   };
 }
 
+/**
+ * The five model identifiers, or nothing.
+ *
+ * The same environment variables the Python gateway reads, so a deployment and the
+ * process it deploys cannot disagree about which models a run used. Absent is a
+ * supported state: no identifier is compiled in (ADR-006), and a stack deployed
+ * without them grants no Bedrock permission and produces functions that refuse to
+ * start rather than reaching for a default nobody recorded.
+ */
+export function modelIdentifiers(
+  env: NodeJS.ProcessEnv = process.env,
+): ModelIdentifiers | undefined {
+  const resolved = {
+    writerModelId: (env.WRITER_MODEL_ID ?? '').trim(),
+    auditorModelId: (env.AUDITOR_MODEL_ID ?? '').trim(),
+    judgeModelId: (env.JUDGE_MODEL_ID ?? '').trim(),
+    summaryModelId: (env.SUMMARY_MODEL_ID ?? '').trim(),
+    embeddingModelId: (env.EMBEDDING_MODEL_ID ?? '').trim(),
+  };
+  return Object.values(resolved).every((value) => value.length > 0) ? resolved : undefined;
+}
+
 const app = new App();
 const env = ambientEnvironment();
+const config = environmentConfig(
+  (app.node.tryGetContext('environment') as string | undefined) ??
+    process.env.AS_DEPLOYMENT_ENVIRONMENT,
+);
 
-const stack = new FoundationStack(app, 'AttentionSinkFoundation', {
+const models = modelIdentifiers();
+
+/**
+ * Which counter the deployment declares, from the same variable the gateway reads.
+ *
+ * Defaults to `bedrock`. Anything else must be spelled exactly, so a typo deploys
+ * the exact counter rather than quietly deploying the approximate one.
+ */
+const tokenCountSource =
+  process.env.TOKEN_COUNT_SOURCE?.trim() === 'heuristic'
+    ? ('heuristic' as const)
+    : ('bedrock' as const);
+
+/**
+ * Browser origins the read API answers, from the same variable the API reads.
+ *
+ * Empty on a new stack's first deployment: the exhibition's origin is the
+ * distribution's domain, and that does not exist yet. `make aws-deploy` reads it from
+ * the stack outputs and deploys a second time with it set.
+ */
+const allowedOrigins = (process.env.AS_ALLOWED_ORIGINS ?? '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter((origin) => origin.length > 0);
+
+const stack = new PilotStack(app, `AttentionSink-${config.name}`, {
   ...(env ? { env } : {}),
-  description: 'Attention Sink foundation stack.',
+  description: `Attention Sink pilot (${config.name}).`,
+  config,
+  tokenCountSource,
+  allowedOrigins,
+  ...(models ? { models } : {}),
 });
 
 Tags.of(stack).add('project', 'attention-sink');
+Tags.of(stack).add('environment', config.name);

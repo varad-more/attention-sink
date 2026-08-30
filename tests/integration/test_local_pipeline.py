@@ -17,17 +17,18 @@ from fastapi.testclient import TestClient
 
 from attention_sink.analysis import (
     EXPORT_FILES,
-    EXPORT_LABELS,
     AnalysisResult,
     AnalysisService,
     build_graveyard,
     export_dataset,
+    export_labels,
     verify_checksums,
 )
 from attention_sink.api import build_app, registered_methods, route_paths
 from attention_sink.domain import ArmId, MemoryStatus
+from attention_sink.model_gateway import ModelGateway
 from attention_sink.persistence import SqliteRepository
-from attention_sink.pilot import ProtocolBundle, RunStatus
+from attention_sink.pilot import ModelSpec, ProtocolBundle, RunStatus
 from attention_sink.pilot.local import build_configuration
 from attention_sink.pilot.service import PilotService
 from tests.conftest import fixed_clock
@@ -277,10 +278,18 @@ def test_a_moving_view_is_not_cached(client: TestClient):
     assert client.get(f"/runs/{RUN_ID}").headers["Cache-Control"] == "no-cache"
 
 
-def test_every_response_says_it_is_simulated(client: TestClient):
+def test_every_response_says_what_the_run_it_describes_is(client: TestClient, pipeline: Pipeline):
+    """Derived from the run, never defaulted.
+
+    The first deployed API told every reader that a run driven by real Bedrock
+    generations was a local fixture, because the envelope's `simulated` and `labels`
+    were constants. A client renders responses, so the response is where this has to
+    be right.
+    """
     body = client.get(f"/runs/{RUN_ID}").json()
-    assert body["simulated"] is True
-    assert set(body["labels"]) == set(EXPORT_LABELS)
+    run = pipeline.service.get_run(RUN_ID)
+    assert body["simulated"] is run.configuration.simulated
+    assert set(body["labels"]) == set(export_labels(run))
 
 
 def test_the_graveyard_and_lineage_routes_answer(client: TestClient, pipeline: Pipeline):
@@ -331,12 +340,14 @@ def test_a_corrupted_export_is_detected(pipeline: Pipeline, tmp_path: Path):
 
 def test_the_export_is_labelled_local_fixture_and_non_canonical(pipeline: Pipeline):
     manifest = json.loads((pipeline.export / "run-manifest.json").read_text(encoding="utf-8"))
-    assert set(manifest["labels"]) == set(EXPORT_LABELS)
+    assert set(manifest["labels"]) == set(export_labels(pipeline.service.get_run(RUN_ID)))
     assert manifest["run_kind"] == "local_fixture"
     export_manifest = json.loads(
         (pipeline.export / "export-manifest.json").read_text(encoding="utf-8")
     )
-    assert set(export_manifest["manifest"]["labels"]) == set(EXPORT_LABELS)
+    assert set(export_manifest["manifest"]["labels"]) == set(
+        export_labels(pipeline.service.get_run(RUN_ID))
+    )
 
 
 def test_the_export_contains_one_line_per_snapshot_and_interview(pipeline: Pipeline):
@@ -356,4 +367,60 @@ def test_the_export_is_recorded_against_the_run(pipeline: Pipeline):
     manifests = pipeline.repository.list_export_manifests(RUN_ID)
     assert len(manifests) == 1
     assert manifests[0].files
-    assert set(manifests[0].labels) == set(EXPORT_LABELS)
+    assert set(manifests[0].labels) == set(export_labels(pipeline.service.get_run(RUN_ID)))
+
+
+def test_an_export_is_labelled_from_the_run_and_not_from_a_constant(
+    tmp_path: Path, pilot_bundle: ProtocolBundle, pilot_gateway: ModelGateway
+):
+    """The defect the first deployed export made.
+
+    `EXPORT_LABELS` is what a local fixture run carries, and it was stamped on every
+    export unconditionally -- so the first dataset produced by real Bedrock
+    generations arrived labelled `LOCAL_FIXTURE / SIMULATED_MODEL_OUTPUTS`. An export
+    is the artefact most likely to be read by somebody who was not here, and a wrong
+    provenance label on one is a false result rather than a cosmetic slip.
+    """
+    from attention_sink.analysis import export_labels
+    from attention_sink.pilot.configuration import RunKind
+
+    repository = SqliteRepository(tmp_path / "labels.sqlite3")
+    service = PilotService(repository=repository, bundle=pilot_bundle, gateway=pilot_gateway)
+    configuration = build_configuration(pilot_bundle, run_id="run_labels", gateway=pilot_gateway)
+    service.create_run(run_id="run_labels", configuration=configuration)
+    local = service.get_run("run_labels")
+
+    assert export_labels(local) == (
+        "LOCAL_FIXTURE",
+        "NON_CANONICAL",
+        "SIMULATED_MODEL_OUTPUTS",
+        "APPROXIMATE_TOKEN_BUDGET",
+    )
+
+    real = ModelSpec(
+        model_id="amazon.nova-micro-v1:0",
+        region="us-east-1",
+        temperature=0.7,
+        top_p=0.9,
+        max_output_tokens=1024,
+        simulated=False,
+    )
+    staging = local.model_copy(
+        update={
+            "run_kind": RunKind.AWS_STAGING,
+            "configuration": configuration.model_copy(
+                update={
+                    "run_kind": RunKind.AWS_STAGING,
+                    "writer_model": real,
+                    "embedding_model": real,
+                    "token_count_source": "bedrock_count_tokens",
+                }
+            ),
+        }
+    )
+    assert export_labels(staging) == (
+        "AWS_STAGING",
+        "NON_CANONICAL",
+        "REAL_MODEL_OUTPUTS",
+        "EXACT_TOKEN_BUDGET",
+    )

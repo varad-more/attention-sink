@@ -10,6 +10,12 @@ There is no fallback. A production process whose counter is unavailable stops. S
 degradation to an approximation would leave every arm in that run measured against a
 budget in a different unit from the one its manifest claims, and nothing downstream
 would show it.
+
+:class:`ApproximateTokenCounter` is the other counter, and it is not a fallback. It is
+selected by configuration, records its own version on every budget it measures, and is
+refused for a canonical run (ADR-012). The difference between "configured" and "fallen
+back to" is the whole of the guarantee: one is a decision recorded in a manifest, the
+other is a silent change of unit nobody would see.
 """
 
 from __future__ import annotations
@@ -19,7 +25,7 @@ from dataclasses import dataclass, field
 from time import monotonic
 from typing import TYPE_CHECKING, Any
 
-from attention_sink.domain import content_hash
+from attention_sink.domain import HeuristicTokenCounter, content_hash
 from attention_sink.model_gateway.failures import (
     ModelInvocationError,
     Retrier,
@@ -37,7 +43,7 @@ from attention_sink.model_gateway.observability import (
 if TYPE_CHECKING:  # pragma: no cover - imports exist for typing only
     from mypy_boto3_bedrock_runtime.type_defs import CountTokensInputTypeDef, MessageTypeDef
 
-__all__ = ["BEDROCK_COUNTER_VERSION", "BedrockTokenCounter"]
+__all__ = ["BEDROCK_COUNTER_VERSION", "ApproximateTokenCounter", "BedrockTokenCounter"]
 
 BEDROCK_COUNTER_VERSION = "bedrock-count-tokens-v1"
 """Counter version recorded on every ``TokenBudget`` counted this way.
@@ -187,3 +193,61 @@ class BedrockTokenCounter:
 def _user_turn(text: str) -> MessageTypeDef:
     """One user message in the shape CountTokens expects."""
     return {"role": "user", "content": [{"text": text}]}
+
+
+@dataclass(frozen=True, slots=True)
+class ApproximateTokenCounter:
+    """The heuristic counter, wearing the exact counter's interface.
+
+    Two situations reach it, and both are chosen rather than fallen into. Fixture mode
+    calls no model at all, so there is no tokeniser to ask. And a deployment whose
+    Region offers no model supporting Bedrock ``CountTokens`` may record that it used
+    this one instead (ADR-012) -- explicitly, in configuration, and never for a
+    canonical run.
+
+    :attr:`version` is ``heuristic-v1`` either way, and it travels on every
+    ``TokenBudget`` this counter measures. A run counted this way is visibly not a run
+    counted against a model's own tokeniser, which is the property that stops the two
+    from ever being compared as though they were the same measurement.
+    """
+
+    model_id: str
+    region: str
+    simulated: bool
+    """Whether the surrounding gateway fabricates its generations.
+
+    A property of the run, not of the counter: an approximate count in a staging run
+    against real models is an approximation of something real.
+    """
+
+    counter: HeuristicTokenCounter = field(default_factory=HeuristicTokenCounter)
+
+    @property
+    def version(self) -> str:
+        """The heuristic counter's version, unchanged."""
+        return self.counter.version
+
+    def count(self, text: str) -> int:
+        """Return the budget-token cost of ``text``."""
+        return self.counter.count(text)
+
+    def count_detailed(self, text: str) -> TokenCount:
+        """Count ``text`` and report the call that was not made."""
+        tokens = self.counter.count(text)
+        return TokenCount(tokens=tokens, metadata=self._metadata(tokens))
+
+    def count_request(self, *, system: str, user: str) -> TokenCount:
+        """Count both turns as one block."""
+        return self.count_detailed(f"{system}\n\n{user}")
+
+    def _metadata(self, tokens: int) -> CallMetadata:
+        return CallMetadata(
+            role=ModelRole.TOKEN_COUNTER,
+            model_id=self.model_id,
+            region=self.region,
+            outcome=CallOutcome.SUCCESS,
+            latency_ms=0,
+            retry_count=0,
+            simulated=self.simulated,
+            input_tokens=tokens,
+        )

@@ -29,7 +29,7 @@ from pydantic import BaseModel
 
 from attention_sink.domain import HeuristicTokenCounter, content_hash
 from attention_sink.model_gateway.adapters import RawResponse
-from attention_sink.model_gateway.interfaces import EmbeddingResult, TokenCount
+from attention_sink.model_gateway.interfaces import EmbeddingResult
 from attention_sink.model_gateway.observability import CallMetadata, CallOutcome, ModelRole
 from attention_sink.model_gateway.rendering import (
     parse_claims,
@@ -53,7 +53,6 @@ __all__ = [
     "SIMULATED_PREFIX",
     "FixtureEmbeddingProvider",
     "FixtureInvoker",
-    "FixtureTokenCounter",
     "FixtureUnavailableError",
 ]
 
@@ -228,50 +227,6 @@ class FixtureInvoker:
             stop_reason="end_turn",
             input_tokens=_COUNTER.count(f"{system}\n\n{user}"),
             output_tokens=_COUNTER.count(output.model_dump_json()),
-        )
-
-
-@dataclass(frozen=True, slots=True)
-class FixtureTokenCounter:
-    """The heuristic counter, wearing the exact counter's interface.
-
-    ADR-011 permits an approximate count only where no model is being called at all.
-    Its version travels on every budget it measures, so a run counted this way is
-    visibly not a run counted against a model's own tokeniser.
-    """
-
-    model_id: str = FIXTURE_MODEL_ID
-    region: str = FIXTURE_REGION
-    counter: HeuristicTokenCounter = _COUNTER
-
-    @property
-    def version(self) -> str:
-        """The heuristic counter's version, unchanged."""
-        return self.counter.version
-
-    def count(self, text: str) -> int:
-        """Return the budget-token cost of ``text``."""
-        return self.counter.count(text)
-
-    def count_detailed(self, text: str) -> TokenCount:
-        """Count ``text`` and report a simulated call."""
-        tokens = self.counter.count(text)
-        return TokenCount(tokens=tokens, metadata=self._metadata(tokens))
-
-    def count_request(self, *, system: str, user: str) -> TokenCount:
-        """Count both turns as one block."""
-        return self.count_detailed(f"{system}\n\n{user}")
-
-    def _metadata(self, tokens: int) -> CallMetadata:
-        return CallMetadata(
-            role=ModelRole.TOKEN_COUNTER,
-            model_id=self.model_id,
-            region=self.region,
-            outcome=CallOutcome.SUCCESS,
-            latency_ms=0,
-            retry_count=0,
-            simulated=True,
-            input_tokens=tokens,
         )
 
 

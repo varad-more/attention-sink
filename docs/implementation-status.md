@@ -4,7 +4,7 @@ Kept deliberately honest. A phase is marked complete only when its acceptance
 commands have been executed and passed, and anything not built is listed as not
 built rather than omitted.
 
-Last updated: 2026-08-29.
+Last updated: 2026-08-30.
 
 ## Phase 1 - Repository foundation, tooling, and local developer workflow
 
@@ -419,12 +419,162 @@ browser flows.
   built. The engine is persistence-independent so that it can be, but this phase runs
   it locally only.
 
-## Phases 7 and 8
+## Pilot Phase 7 - AWS adapters, CDK infrastructure, staging deployment, real Bedrock
 
-Not started, and the only things left: DynamoDB and S3 adapters, Lambda handlers, API
-Gateway, EventBridge Scheduler, CDK resources, deployment, real Bedrock validation,
-AWS token calibration, the canonical run, and public release.
+**Status: complete, with one blocker on canonical execution recorded rather than
+worked around.**
 
-Deferred by ADR-local-first-pilot rather than unstarted: the event ledger (ADR-002)
-and Step Functions orchestration (ADR-003). Both remain accepted decisions whose
-implementation waits for a phase that needs them.
+The same domain logic, application services, API contracts, and frontend now run on
+AWS behind different adapters. Nothing above the adapter line changed to fit AWS: the
+services still hold the ports Phase 5 defined, and `PilotService` and
+`AnalysisService` are byte-for-byte the ones the local process runs.
+
+### Delivered
+
+- `packages/aws` - the one package above the model gateway that imports an AWS SDK.
+  `DynamoRepository` (the second implementation of `PilotRepository`),
+  `S3ExportStorage`, the structured logger, the cycle-completed event, the deployment
+  settings, the composition root, and the three Lambda handlers.
+- **One table, one partition per run.** `RUN#{run_id}` holds the run's head, six arm
+  states, every prepared cycle, every snapshot, every interview, every metric, the
+  analysis markers, and the export manifests. One sparse index (`GSI1`) serves the two
+  access patterns the main key cannot: the newest-first run listing and one arm's
+  snapshots in cycle order. **No read path issues a `Scan`**, and no role has
+  permission to.
+- **The commit is one `TransactWriteItems`.** Fourteen writes -- six snapshots, six arm
+  states, the prepared cycle, the run head -- conditioned on the run's version, its
+  current cycle, the lock token, and the prepared cycle's content hash. The lock lives
+  on the run's own item, so "the run is where I left it" and "the lock is still mine"
+  are one condition on one item.
+- **Immutability is a write condition**, because DynamoDB has no triggers: a snapshot
+  is written with `attribute_not_exists`, so a rewrite fails rather than replacing a
+  committed record.
+- Three Lambda handlers, thin over the existing services. The run-cycle handler
+  executes one cycle per invocation and returns a status for every refusal that is not
+  a fault; the analysis handler verifies the store against the event before it
+  believes it, claims the cycle with a conditional write, and releases the claim if the
+  work fails; the read handler is `build_app` behind Mangum -- the same routes, schemas,
+  and filters the local process serves.
+- `PilotStack` in three environment configurations. Every dangerous default is off in
+  all three: execution disabled, schedule disabled, nothing canonical. Staging caps
+  the run at three cycles so that arming it by mistake costs three cycles rather than
+  twenty-four.
+- Least-privilege IAM written out rather than granted. `grantReadWriteData` would add
+  `Scan`, `BatchWriteItem`, and `DeleteItem` to every role that writes anything; naming
+  the actions is longer and is the point. The read API's role holds `GetItem` and
+  `Query` and no write action of any kind. **No wildcard action anywhere**, and Bedrock
+  is scoped to the configured model identifiers.
+- CloudFront with Origin Access Control over a private bucket, SPA fallback,
+  compression, and a content security policy that names the API's own domain rather
+  than allowing any origin. Both buckets block all public access; the export bucket is
+  versioned and its canonical prefix refuses a second write.
+- Structured CloudWatch logging with a **closed** field set -- the allowlist is the
+  whole mechanism, so no prompt, journal entry, memory, stimulus, interview answer, or
+  token can reach a log line. Four metric filters derive the experiment's own metrics
+  from those lines, and nine alarms cover the seven conditions the brief names.
+- `scripts/aws_cli.py`, the AWS composition root: `preflight`, `bootstrap`, `status`,
+  `cycle`, `schedule inspect|enable|disable|invoke-once`, and `export`. Enabling the
+  schedule is refused while the function itself is disarmed.
+- `scripts/build_lambda_bundle.py`, which builds the deployment package as its own
+  inspectable step so that `cdk synth` needs neither Docker nor a network.
+- ADR-012, and `docs/pilot/aws-staging-report.md` and
+  `docs/pilot/aws-staging-teardown.md`.
+
+### Verified results
+
+Deployed to a staging account in `us-east-1`, on `amazon.nova-micro-v1:0` and
+`amazon.titan-embed-text-v2:0`.
+
+- **Three real six-arm cycles committed**, each through the deployed Lambda, in 5.6 to
+  7.0 seconds. 18 snapshots, 6 cycle-0 interviews, 24 model calls (18 writer, 6
+  interviewer; zero auditor, zero evaluator on the cycle path), 57,279 input and
+  14,608 output tokens.
+- **Analysis ran asynchronously** for all three cycles, triggered by the
+  `CycleCompleted` event, and stored 180 metric rows and the four derived artefacts.
+- **Duplicate execution is idempotent.** An invocation naming a committed cycle
+  returned `already_committed` and spent nothing; a redelivered event returned
+  `already_analysed`.
+- **The public API exposes only committed data.** `/cycles` returned `[1, 2, 3]`, a
+  request for cycle 4 returned 404 _while a prepared cycle existed for it_, and every
+  mutating verb returned 404 on every path.
+- **Both buckets are private**; direct S3 access returns 403 and the exhibition is
+  served only through CloudFront with Origin Access Control, a content security policy
+  naming one API domain, HSTS, and SPA fallback.
+- **The dead-letter path works**: a malformed event published to the bus was refused,
+  retried twice by EventBridge, and dead-lettered. The `AnalysisErrorsAlarm` fired for
+  a real failure.
+- **No log line carries content.** All three log groups were grepped for eleven probes
+  -- seed text, prompt field names, the prompt boundary token, `AKIA`,
+  `Authorization`, an arm identifier -- and none appeared.
+- The 16-file export verified: all 16 digests recomputed from S3 matched.
+- **The scheduler exists and has never been enabled.** The run-cycle function is
+  disarmed again.
+
+Full detail, including the failure tests and what each proved, is
+`docs/pilot/aws-staging-report.md`.
+
+### Test and coverage position
+
+- 1,138 tests: unit, Hypothesis property, integration, and smoke. 1,127 run; the 8
+  Bedrock smoke tests and 3 contract tests are skipped unless explicitly armed.
+- 12 new test modules, including `tests/integration/test_dynamodb.py`, which restates
+  the Phase 5 SQLite guarantees against the DynamoDB adapter rather than assuming they
+  carried over, and 38 CDK assertions that run before any deployment.
+- **100%** of `packages/aws`. Every package passes its own 95% gate: domain 99%,
+  policies 100%, model_gateway 99%, pilot 98%, analysis 97%, persistence 99%,
+  api 99%, aws 100%.
+
+### Three defects this phase found
+
+Two could only have been found by deploying, and the third by measuring coverage.
+
+- **A Bedrock model identifier does not fit in a `Version`.** `amazon.nova-micro-v1:0`
+  carries a colon; fixture mode returns `fixture-evaluator-v1`, which is already
+  version-shaped, so every local run passed and the first deployed analysis failed on
+  its first metric. Fixed with `attention_sink.domain.version_token`.
+- **The export and the API labelled real generations as simulated fixtures.**
+  `EXPORT_LABELS` and `ApiEnvelope.simulated` were constants. Both are now derived
+  from the run, as four independent labels.
+- **A session-wide skip in the smoke conftest.** `pytest_collection_modifyitems` is a
+  session hook, so a conftest in a subdirectory is handed every collected item -- and
+  the smoke guard was skipping the entire suite for anyone running bare `pytest`.
+  `make test` now collects every directory under `tests/`, so the coverage gates catch
+  it.
+
+### The blocker, stated plainly
+
+**Bedrock `CountTokens` is unavailable for every model this account can reach.** Every
+on-demand text model in `us-east-1` returns `ValidationException: The provided model
+doesn't support counting tokens`, including the Nova family the staging run uses; so
+does every Anthropic inference profile the account can reach, and so do us-west-2,
+us-east-2, eu-central-1, and ap-northeast-1.
+
+ADR-011 makes the model's own tokenisation the production unit with no fallback, and
+the engine counts on every cycle, so with no counter there is no cycle at all.
+ADR-012 resolves it the only honest way: `TOKEN_COUNT_SOURCE` **declares** the counter
+before the run starts, the choice is recorded in the manifest and in every export, and
+`require_run_kind_consistent` refuses a canonical run denominated in an approximate
+one. There is still no fallback -- `BedrockTokenCounter` raises when `CountTokens` is
+unavailable and nothing catches it.
+
+The consequence is that the canonical twenty-four-cycle run is blocked until
+`CountTokens` covers a usable model, and that the protocol stays `LOCAL_VALIDATED`
+rather than `AWS_CALIBRATED`: calibrating a budget against a counter the canonical run
+will not use would produce a number nobody should freeze.
+
+### Deliberately not delivered in this phase
+
+- **No canonical run.** None was created, and the machinery refuses to create one:
+  `AS_CANONICAL` is rejected outside production, and a canonical run needs a `FROZEN`
+  protocol, which nothing in this phase produces.
+- No Step Functions and no event ledger. Both remain accepted decisions
+  (ADR-002, ADR-003) deferred by ADR-local-first-pilot.
+- No WebSocket API. The exhibition polls.
+- No SNS topic behind the alarms. They fire and are visible; wiring a notification
+  channel needs an address this repository should not hold.
+- No production deployment. `preflight` refuses `AS_DEPLOYMENT_ENVIRONMENT=production`.
+
+## Phase 8
+
+Not started. What is left: AWS token calibration (blocked, above), freezing the
+protocol, the canonical twenty-four-cycle run, and public release.

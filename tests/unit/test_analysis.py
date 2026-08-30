@@ -273,3 +273,70 @@ def test_an_assertion_with_no_canonical_term_is_an_unsupported_inference():
         "The station belonged to my grandfather.", statements=["x"], terms=["brother"]
     )
     assert label is ContradictionLabel.UNSUPPORTED_INFERENCE
+
+
+# ------------------------------------------------------- the evaluator's identity
+
+
+def test_a_bedrock_model_identifier_fits_in_an_evaluator_version():
+    """The defect the first deployed analysis found.
+
+    Fixture mode returns `fixture-evaluator-v1`, which is already version-shaped, so
+    every local run passed. A real judge model is `amazon.nova-lite-v1:0`, and the
+    colon is not a character `Version` admits -- so the first metric of the first real
+    cycle failed to construct, several hundred model calls after the point where it
+    could have been caught.
+    """
+    from attention_sink.analysis.service import _evaluator_version
+    from attention_sink.domain import MetricEvidence, version_token
+    from attention_sink.model_gateway import GatewaySettings, build_gateway
+
+    bedrock = GatewaySettings.from_env(
+        env={
+            "MODEL_MODE": "bedrock",
+            "AWS_REGION": "us-east-1",
+            "WRITER_MODEL_ID": "amazon.nova-lite-v1:0",
+            "AUDITOR_MODEL_ID": "amazon.nova-lite-v1:0",
+            "JUDGE_MODEL_ID": "amazon.nova-lite-v1:0",
+            "SUMMARY_MODEL_ID": "amazon.nova-lite-v1:0",
+            "EMBEDDING_MODEL_ID": "amazon.titan-embed-text-v2:0",
+        }
+    )
+
+    class _Unused:
+        def count_tokens(self, **_: object) -> object:
+            raise AssertionError("nothing is counted here")
+
+        def invoke_model(self, **_: object) -> object:
+            raise AssertionError("nothing is invoked here")
+
+    client: object = _Unused()
+    gateway = build_gateway(bedrock, client=client)  # type: ignore[arg-type]
+    resolved = _evaluator_version(gateway)
+    assert resolved == "amazon.nova-lite-v1-0"
+
+    # And it is accepted where it has to be accepted.
+    MetricEvidence(
+        run_id="run_x",
+        arm_id=ArmId.ARM_FIFO,
+        cycle=1,
+        metric_name="origin_recall",
+        value=0.5,
+        evaluator_version=resolved,
+        calculation_version="metrics-v1",
+        rationale="a score with a traceable evaluator",
+        computed_at=datetime(2026, 8, 30, tzinfo=UTC),
+    )
+    assert version_token("us.anthropic.claude-sonnet-4-5-20250929-v1:0").endswith("v1-0")
+
+
+def test_a_version_token_refuses_what_it_cannot_make_traceable():
+    from attention_sink.domain import version_token
+
+    assert version_token("a/b:c") == "a-b-c"
+    # Leading rejected characters are dropped, not padded: a version must start
+    # alphanumeric, and inventing a prefix would invent provenance.
+    assert version_token("::model") == "model"
+    for hopeless in ("", ":::", "///"):
+        with pytest.raises(ValueError, match="version string"):
+            version_token(hopeless)

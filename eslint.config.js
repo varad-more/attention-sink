@@ -45,6 +45,22 @@ export default tseslint.config(
     },
   },
   {
+    // A CloudFormation template is untyped JSON, and CDK's own assertions API says so:
+    // `findResources` returns `Record<string, Record<string, any>>`. Reaching into one
+    // is the whole activity here, and the `expect` on the next line is the check the
+    // `no-unsafe-*` rules would otherwise be standing in for. Scoped to this one file
+    // so the rules stay on everywhere they can catch something.
+    files: ['infrastructure/cdk/test/**/*.test.ts'],
+    rules: {
+      '@typescript-eslint/no-unsafe-member-access': 'off',
+      '@typescript-eslint/no-unsafe-assignment': 'off',
+      '@typescript-eslint/no-unsafe-argument': 'off',
+      '@typescript-eslint/no-unsafe-call': 'off',
+      '@typescript-eslint/no-unsafe-return': 'off',
+      '@typescript-eslint/no-explicit-any': 'off',
+    },
+  },
+  {
     files: ['**/*.js'],
     ...tseslint.configs.disableTypeChecked,
   },

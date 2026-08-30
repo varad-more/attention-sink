@@ -42,7 +42,6 @@ from attention_sink.model_gateway.fixtures import (
     SIMULATED_PREFIX,
     FixtureEmbeddingProvider,
     FixtureInvoker,
-    FixtureTokenCounter,
     FixtureUnavailableError,
 )
 from attention_sink.model_gateway.interfaces import (
@@ -117,9 +116,14 @@ from attention_sink.model_gateway.settings import (
     ModelMode,
     RuntimeMode,
     RuntimeSettings,
+    TokenCountSource,
     WriterInference,
 )
-from attention_sink.model_gateway.tokens import BEDROCK_COUNTER_VERSION, BedrockTokenCounter
+from attention_sink.model_gateway.tokens import (
+    BEDROCK_COUNTER_VERSION,
+    ApproximateTokenCounter,
+    BedrockTokenCounter,
+)
 
 __all__ = [
     "BEDROCK_COUNTER_VERSION",
@@ -134,6 +138,7 @@ __all__ = [
     "RETRYABLE_CODES",
     "SIMULATED_PREFIX",
     "SUPPORTED_DIMENSIONS",
+    "ApproximateTokenCounter",
     "AuditOutput",
     "AuditResult",
     "AuditedCitation",
@@ -155,7 +160,6 @@ __all__ = [
     "ExactTokenCounter",
     "FixtureEmbeddingProvider",
     "FixtureInvoker",
-    "FixtureTokenCounter",
     "FixtureUnavailableError",
     "GatewaySettings",
     "InterviewAnswer",
@@ -199,6 +203,7 @@ __all__ = [
     "ThoughtOutput",
     "ThoughtWriter",
     "TokenCount",
+    "TokenCountSource",
     "UnknownMemoryReferenceError",
     "UnsupportedClaim",
     "UnsupportedReason",

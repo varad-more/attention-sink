@@ -31,6 +31,7 @@ __all__ = [
     "ModelMode",
     "RuntimeMode",
     "RuntimeSettings",
+    "TokenCountSource",
     "WriterInference",
 ]
 
@@ -71,6 +72,24 @@ class ModelMode(StrEnum):
 
     FIXTURE = "fixture"
     """Deterministic local responses. No AWS credentials required."""
+
+
+class TokenCountSource(StrEnum):
+    """Which counter denominates the active-memory budget.
+
+    Not a fallback switch. ADR-011 makes the model's own tokeniser the production
+    unit and forbids degrading to an approximation when it fails; ADR-012 adds that a
+    deployment whose Region offers no model supporting Bedrock ``CountTokens`` may
+    *declare* the approximate counter instead. The distinction is the guarantee: one
+    is recorded in the run manifest before a single cycle runs, the other would be a
+    unit change nobody could see afterwards.
+    """
+
+    BEDROCK = "bedrock"
+    """Bedrock ``CountTokens``, against the writer's own model. No fallback."""
+
+    HEURISTIC = "heuristic"
+    """The versioned approximate counter. Never valid for a canonical run."""
 
 
 class ModelConfig(BaseModel):
@@ -169,6 +188,9 @@ class GatewaySettings(BaseModel):
     mode: ModelMode
     models: ModelConfig | None = None
     inference: WriterInference = WriterInference()
+    token_count_source: TokenCountSource = TokenCountSource.BEDROCK
+    """What the budget is counted with. Recorded, never inferred."""
+
     request_timeout_seconds: int = Field(default=60, gt=0, le=900)
     max_model_retries: int = Field(default=3, ge=0, le=10)
     """Retries *after* the first attempt. Zero means one attempt and no retry."""
@@ -206,10 +228,10 @@ class GatewaySettings(BaseModel):
                 injectable so tests never mutate global state.
 
         Raises:
-            ConfigurationError: ``MODEL_MODE`` or ``AS_RUNTIME_MODE`` is unknown, a
-                numeric setting is unparseable or out of range, Bedrock mode is
-                missing a Region or a model identifier, or a production runtime
-                asked for fixture responses.
+            ConfigurationError: ``MODEL_MODE``, ``AS_RUNTIME_MODE``, or
+                ``TOKEN_COUNT_SOURCE`` is unknown, a numeric setting is unparseable
+                or out of range, Bedrock mode is missing a Region or a model
+                identifier, or a production runtime asked for fixture responses.
         """
         source = environ if env is None else env
         mode = _enum_from_env(source, "MODEL_MODE", ModelMode, ModelMode.FIXTURE)
@@ -236,6 +258,9 @@ class GatewaySettings(BaseModel):
             "request_timeout_seconds": _number(source, "REQUEST_TIMEOUT_SECONDS", 60, int),
             "max_model_retries": _number(source, "MAX_MODEL_RETRIES", 3, int),
             "models": _resolve_models(source) if mode is ModelMode.BEDROCK else None,
+            "token_count_source": _enum_from_env(
+                source, "TOKEN_COUNT_SOURCE", TokenCountSource, TokenCountSource.BEDROCK
+            ),
         }
         try:
             return cls.model_validate(settings)

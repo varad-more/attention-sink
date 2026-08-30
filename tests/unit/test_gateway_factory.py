@@ -7,6 +7,7 @@ import pytest
 from attention_sink.model_gateway import (
     BEDROCK_COUNTER_VERSION,
     FIXTURE_MODEL_ID,
+    ApproximateTokenCounter,
     BedrockEmbeddingProvider,
     BedrockTokenCounter,
     CitationAuditor,
@@ -14,7 +15,6 @@ from attention_sink.model_gateway import (
     ConfigurationError,
     EmbeddingProvider,
     FixtureEmbeddingProvider,
-    FixtureTokenCounter,
     GatewaySettings,
     Interviewer,
     MemorySummarizer,
@@ -53,7 +53,7 @@ def test_fixture_mode_assembles_without_any_aws_configuration():
     assert isinstance(gateway.interviewer, Interviewer)
     assert isinstance(gateway.evaluator, ClaimEvaluator)
     assert isinstance(gateway.embeddings, EmbeddingProvider)
-    assert isinstance(gateway.token_counter, FixtureTokenCounter)
+    assert isinstance(gateway.token_counter, ApproximateTokenCounter)
     assert isinstance(gateway.embeddings, FixtureEmbeddingProvider)
 
 

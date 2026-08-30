@@ -134,9 +134,38 @@ def _present(declared: dict[str, frozenset[str]]) -> list[str]:
     return [name for name in declared if _package_root(name).is_dir()]
 
 
+COMPOSITION_PACKAGES: dict[str, frozenset[str]] = {
+    "aws": frozenset(
+        {
+            "attention_sink.analysis",
+            "attention_sink.api",
+            "attention_sink.aws",
+            "attention_sink.domain",
+            "attention_sink.model_gateway",
+            "attention_sink.pilot",
+            "attention_sink.protocol",
+        }
+    ),
+}
+"""Composition-root package name to the internal packages it may depend on.
+
+A Lambda handler is a composition root: choosing which store, which gateway, and
+which services a process holds is the whole of its job, so it is allowed to see all
+of them at once. What it may not do is be seen. The direction that would destroy the
+adapter line is an application or an adapter importing this package, and
+:func:`test_nothing_imports_the_composition_root` is the check that matters here --
+not the allowance above.
+
+``attention_sink.persistence`` is deliberately absent. The AWS package has its own
+store; importing SQLite as well would mean a deployed process could be pointed at a
+file, which is not a mistake worth leaving available.
+"""
+
+
 PRESENT = _present(PURE_PACKAGES)
 PRESENT_ADAPTERS = _present(ADAPTER_PACKAGES)
 PRESENT_APPLICATIONS = _present(APPLICATION_PACKAGES)
+PRESENT_COMPOSITION = _present(COMPOSITION_PACKAGES)
 
 
 def _imported_modules(source: Path) -> set[str]:
@@ -240,4 +269,46 @@ def test_application_dependencies_stay_inside_the_project(name: str):
 
     assert not offenders, "an application package imported something undeclared: " + "; ".join(
         offenders
+    )
+
+
+@pytest.mark.parametrize("name", PRESENT_COMPOSITION)
+def test_composition_roots_depend_only_on_what_they_declare(name: str):
+    allowed = COMPOSITION_PACKAGES[name]
+    offenders: list[str] = []
+    for source in sorted(_package_root(name).rglob("*.py")):
+        for module in sorted(_imported_modules(source)):
+            if not module.startswith("attention_sink."):
+                continue
+            if not any(module == p or module.startswith(f"{p}.") for p in allowed):
+                offenders.append(f"{source.relative_to(REPO_ROOT)} imports {module}")
+
+    assert not offenders, "a composition root imported something undeclared: " + "; ".join(
+        offenders
+    )
+
+
+@pytest.mark.parametrize("name", PRESENT_COMPOSITION)
+def test_nothing_imports_the_composition_root(name: str):
+    """The check the whole layout exists for.
+
+    Every other package must run without AWS. The moment one of them imports this
+    one, "the pure packages are testable without an account" becomes a claim rather
+    than a fact, and the failure shows up as an import error in somebody else's CI.
+    """
+    composition = f"attention_sink.{name}"
+    others = [*PURE_PACKAGES, *ADAPTER_PACKAGES, *APPLICATION_PACKAGES]
+    offenders: list[str] = []
+    for other in others:
+        root = _package_root(other)
+        if not root.is_dir():
+            continue
+        for source in sorted(root.rglob("*.py")):
+            for module in sorted(_imported_modules(source)):
+                if module == composition or module.startswith(f"{composition}."):
+                    offenders.append(f"{source.relative_to(REPO_ROOT)} imports {module}")
+
+    assert not offenders, (
+        f"a package below the composition root imported {composition}, so it can no "
+        f"longer be tested without AWS: " + "; ".join(offenders)
     )

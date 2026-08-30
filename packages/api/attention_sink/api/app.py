@@ -153,7 +153,12 @@ def build_app(
 
     @app.get("/runs")
     def list_runs() -> ApiEnvelope[list[RunSummary]]:
-        """Every run, newest first."""
+        """Every run, newest first.
+
+        The envelope keeps its safe defaults here rather than describing one of the
+        runs it lists: a listing that may hold a fixture run and a real one cannot
+        honestly be labelled as either, and each ``RunSummary`` carries its own kind.
+        """
         return ApiEnvelope(data=[RunSummary.of(run) for run in repository.list_runs()])
 
     @app.get("/runs/{run_id}")
@@ -161,7 +166,7 @@ def build_app(
         """One run's public head."""
         run = _run_or_404(run_id)
         _mutable(response)
-        return ApiEnvelope(data=RunSummary.of(run))
+        return ApiEnvelope.of(RunSummary.of(run), run)
 
     @app.get("/runs/{run_id}/arms")
     def list_arms(run_id: str, response: Response) -> ApiEnvelope[list[ArmSummary]]:
@@ -169,12 +174,13 @@ def build_app(
         run = _run_or_404(run_id)
         states = repository.get_all_current_arm_states(run_id)
         _mutable(response)
-        return ApiEnvelope(
-            data=[
+        return ApiEnvelope.of(
+            [
                 ArmSummary.of(arm, states[arm.value], run)
                 for arm in run.configuration.arms
                 if arm.value in states
-            ]
+            ],
+            run,
         )
 
     @app.get("/runs/{run_id}/arms/{arm_id}")
@@ -186,7 +192,7 @@ def build_app(
         if state is None:
             raise HTTPException(status_code=404, detail=f"no state for {arm_id} in {run_id}")
         _mutable(response)
-        return ApiEnvelope(data=ArmSummary.of(arm, state, run))
+        return ApiEnvelope.of(ArmSummary.of(arm, state, run), run)
 
     # ---------------------------------------------------------------- cycles
 
@@ -198,10 +204,10 @@ def build_app(
         offset: int = Query(default=0, ge=0),
     ) -> ApiEnvelope[Page[int]]:
         """Every completed cycle number. Never a prepared one."""
-        _run_or_404(run_id)
+        run = _run_or_404(run_id)
         completed = repository.list_completed_cycles(run_id)
         _mutable(response)
-        return ApiEnvelope(data=Page.of(completed, limit=limit, offset=offset))
+        return ApiEnvelope.of(Page.of(completed, limit=limit, offset=offset), run)
 
     @app.get("/runs/{run_id}/cycles/{cycle}")
     def get_cycle(run_id: str, cycle: int, response: Response) -> ApiEnvelope[list[CycleView]]:
@@ -213,8 +219,8 @@ def build_app(
             raise HTTPException(status_code=404, detail=f"cycle {cycle} has no snapshots")
         _immutable(response, snapshots[0].snapshot_hash)
         by_arm = {snapshot.arm_id: snapshot for snapshot in snapshots}
-        return ApiEnvelope(
-            data=[CycleView.of(by_arm[arm]) for arm in run.configuration.arms if arm in by_arm]
+        return ApiEnvelope.of(
+            [CycleView.of(by_arm[arm]) for arm in run.configuration.arms if arm in by_arm], run
         )
 
     # -------------------------------------------------------------- graveyard
@@ -236,7 +242,7 @@ def build_app(
             for entry in build_graveyard(run_id, repository.list_arm_snapshots(run_id, arm_id=arm))
         ]
         _mutable(response)
-        return ApiEnvelope(data=Page.of(entries, limit=limit, offset=offset))
+        return ApiEnvelope.of(Page.of(entries, limit=limit, offset=offset), run)
 
     @app.get("/runs/{run_id}/graveyard/{memory_id}")
     def get_graveyard_entry(
@@ -248,7 +254,7 @@ def build_app(
             for entry in build_graveyard(run_id, repository.list_arm_snapshots(run_id, arm_id=arm)):
                 if entry.memory_id == memory_id:
                     _immutable(response, entry.snapshot_evidence)
-                    return ApiEnvelope(data=GraveyardView.of(entry))
+                    return ApiEnvelope.of(GraveyardView.of(entry), run)
         raise HTTPException(status_code=404, detail=f"no retired memory {memory_id} in {run_id}")
 
     # ------------------------------------------------------------- interviews
@@ -256,9 +262,9 @@ def build_app(
     @app.get("/runs/{run_id}/interviews")
     def list_interviews(run_id: str, response: Response) -> ApiEnvelope[list[InterviewView]]:
         """Every stored checkpoint interview."""
-        _run_or_404(run_id)
+        run = _run_or_404(run_id)
         _mutable(response)
-        return ApiEnvelope(data=[InterviewView.of(i) for i in repository.get_interviews(run_id)])
+        return ApiEnvelope.of([InterviewView.of(i) for i in repository.get_interviews(run_id)], run)
 
     @app.get("/runs/{run_id}/interviews/{cycle}")
     def get_interviews(
@@ -272,7 +278,7 @@ def build_app(
         if not stored:
             raise HTTPException(status_code=404, detail=f"no interviews at cycle {cycle}")
         _immutable(response, stored[0].record_hash)
-        return ApiEnvelope(data=[InterviewView.of(i) for i in stored])
+        return ApiEnvelope.of([InterviewView.of(i) for i in stored], run)
 
     # ---------------------------------------------------------------- metrics
 
@@ -286,17 +292,18 @@ def build_app(
         offset: int = Query(default=0, ge=0),
     ) -> ApiEnvelope[Page[dict[str, Any]]]:
         """Stored metric evidence, with the versions that produced each score."""
-        _run_or_404(run_id)
+        run = _run_or_404(run_id)
         metrics = repository.get_metrics(
             run_id,
             metric_name=metric_name,
             arm_id=_arm_or_404(arm_id) if arm_id else None,
         )
         _mutable(response)
-        return ApiEnvelope(
-            data=Page.of(
+        return ApiEnvelope.of(
+            Page.of(
                 [metric.model_dump(mode="json") for metric in metrics], limit=limit, offset=offset
-            )
+            ),
+            run,
         )
 
     @app.get("/runs/{run_id}/divergence")
@@ -306,10 +313,10 @@ def build_app(
         Geometric distance between two identity documents. It says the answers moved
         apart; it does not say why, and nothing downstream should read it as cause.
         """
-        _run_or_404(run_id)
+        run = _run_or_404(run_id)
         stored = repository.get_analysis_artifact(run_id, name="divergence")
         _mutable(response)
-        return ApiEnvelope(data=stored or {"matrices": {}})
+        return ApiEnvelope.of(stored or {"matrices": {}}, run)
 
     @app.get("/runs/{run_id}/echoes")
     def get_echoes(
@@ -325,11 +332,11 @@ def build_app(
         to something the arm can no longer see than to anything it can; it does not
         mean the arm reached the forgotten record.
         """
-        _run_or_404(run_id)
+        run = _run_or_404(run_id)
         stored = repository.get_analysis_artifact(run_id, name="echoes") or {"items": []}
         items = [item for item in stored["items"] if arm_id is None or item["arm_id"] == arm_id]
         _mutable(response)
-        return ApiEnvelope(data=Page.of(items, limit=limit, offset=offset))
+        return ApiEnvelope.of(Page.of(items, limit=limit, offset=offset), run)
 
     @app.get("/runs/{run_id}/contradictions")
     def get_contradictions(
@@ -340,22 +347,22 @@ def build_app(
         offset: int = Query(default=0, ge=0),
     ) -> ApiEnvelope[Page[dict[str, Any]]]:
         """How each checkpoint answer stood against the canonical record."""
-        _run_or_404(run_id)
+        run = _run_or_404(run_id)
         stored = repository.get_analysis_artifact(run_id, name="contradictions") or {"items": []}
         items = [item for item in stored["items"] if cycle is None or item["cycle"] == cycle]
         _mutable(response)
-        return ApiEnvelope(data=Page.of(items, limit=limit, offset=offset))
+        return ApiEnvelope.of(Page.of(items, limit=limit, offset=offset), run)
 
     @app.get("/runs/{run_id}/question-scores")
     def get_question_scores(
         run_id: str, response: Response, cycle: int | None = None
     ) -> ApiEnvelope[list[dict[str, Any]]]:
         """Per-question Origin Recall scores, with what matched and how."""
-        _run_or_404(run_id)
+        run = _run_or_404(run_id)
         stored = repository.get_analysis_artifact(run_id, name="question_scores") or {"items": []}
         _mutable(response)
         del cycle
-        return ApiEnvelope(data=list(stored["items"]))
+        return ApiEnvelope.of(list(stored["items"]), run)
 
     @app.get("/runs/{run_id}/lineage/{memory_id}")
     def get_lineage(
@@ -368,19 +375,20 @@ def build_app(
             lineage = lineage_of(memory_id, snapshots)
             if lineage["parents"] or lineage["children"]:
                 _mutable(response)
-                return ApiEnvelope(data=lineage)
+                return ApiEnvelope.of(lineage, run)
         raise HTTPException(status_code=404, detail=f"no lineage for {memory_id} in {run_id}")
 
     @app.get("/runs/{run_id}/exports")
     def list_exports(run_id: str, response: Response) -> ApiEnvelope[list[dict[str, Any]]]:
         """Every dataset export recorded for this run."""
-        _run_or_404(run_id)
+        run = _run_or_404(run_id)
         _mutable(response)
-        return ApiEnvelope(
-            data=[
+        return ApiEnvelope.of(
+            [
                 manifest.model_dump(mode="json")
                 for manifest in repository.list_export_manifests(run_id)
-            ]
+            ],
+            run,
         )
 
     return app

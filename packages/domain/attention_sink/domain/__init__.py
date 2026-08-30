@@ -59,6 +59,7 @@ from attention_sink.domain.identifiers import (
     StimulusId,
     UtcTimestamp,
     Version,
+    version_token,
 )
 from attention_sink.domain.ledger import LedgerEvent, MetricEvidence
 from attention_sink.domain.memory import (
@@ -132,4 +133,5 @@ __all__ = [
     "render_explanation",
     "selection_digest",
     "state_hash",
+    "version_token",
 ]

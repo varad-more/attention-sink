@@ -11,7 +11,11 @@ SHELL := /bin/bash
 	pilot-local-cycle pilot-local-run pilot-local-export \
 	local-db-migrate local-run-create local-cycle local-scheduler local-api \
 	local-analyze local-export local-verify local-reset-demo local-all \
-	pilot-local-demo pilot-local-web pilot-local-e2e pilot-local-build pilot-local-release-check
+	pilot-local-demo pilot-local-web pilot-local-e2e pilot-local-build pilot-local-release-check \
+	aws-bundle aws-bundle-fast aws-preflight aws-bootstrap-cdk aws-deploy aws-web-build \
+	aws-status aws-cycle aws-schedule-inspect aws-schedule-enable aws-schedule-disable \
+	aws-invoke-once aws-export aws-smoke aws-destroy aws-outputs aws-bootstrap \
+	aws-execution-inspect aws-execution-enable aws-execution-disable
 
 UV ?= uv
 NPM ?= npm
@@ -49,7 +53,12 @@ test-integration: ## Tests that cross a process or adapter boundary
 	$(UV) run pytest tests/integration -m integration
 
 test: ## All Python tests, with coverage, gated per package
-	$(UV) run pytest tests/unit tests/property tests/integration \
+	@# Every directory under tests/, not three named ones. `pytest_collection_modifyitems`
+	@# is a session hook, so a conftest anywhere under tests/ is handed every collected
+	@# item -- and one that skipped the whole suite went unnoticed here precisely because
+	@# this target used to name the directories that conftest did not live in. Collecting
+	@# everything means a session-wide skip fails the coverage gates below immediately.
+	$(UV) run pytest tests \
 		--cov --cov-report=term-missing --cov-report=xml
 	@# Gated per package, not in aggregate: a well-covered package must not be
 	@# allowed to hide an untested one behind a flattering total.
@@ -60,6 +69,7 @@ test: ## All Python tests, with coverage, gated per package
 	$(UV) run coverage report --include='packages/analysis/*' --fail-under=95
 	$(UV) run coverage report --include='packages/persistence/*' --fail-under=95
 	$(UV) run coverage report --include='packages/api/*' --fail-under=95
+	$(UV) run coverage report --include='packages/aws/*' --fail-under=95
 
 simulate: ## Run the policy simulator against a fixture (FIXTURE=path)
 	$(UV) run python scripts/simulate_policy.py $(FIXTURE)
@@ -189,7 +199,7 @@ test-contract: ## Opt-in contract tests against real Bedrock (costs money, needs
 test-web: ## TypeScript tests across every workspace (web client and CDK)
 	$(NPM) run test --workspaces --if-present
 
-synth: ## Synthesise the CDK app to CloudFormation (no AWS credentials needed)
+synth: aws-bundle-fast ## Synthesise the CDK app to CloudFormation (no AWS credentials needed)
 	$(NPM) run synth --workspace infrastructure/cdk
 
 dev: ## Run the web client locally against fixture data
@@ -202,3 +212,95 @@ clean: ## Remove build, cache, and coverage artefacts
 	rm -rf .pytest_cache .mypy_cache .ruff_cache .hypothesis .coverage coverage.xml \
 		apps/web/dist infrastructure/cdk/cdk.out
 	find . -name __pycache__ -type d -prune -exec rm -rf {} +
+
+# ---------------------------------------------------------------------------
+# AWS. Everything below needs credentials, and everything below is inert until
+# an operator arms it: the stack deploys with execution disabled and the
+# schedule disabled, in every environment.
+#
+# The order is fixed and enforced by the commands rather than by this file:
+# preflight, bundle, deploy, bootstrap, smoke, and only then a cycle.
+# ---------------------------------------------------------------------------
+AWS_ENV ?= staging
+CDK ?= npx cdk
+CDK_DIR ?= infrastructure/cdk
+STACK ?= AttentionSink-$(AWS_ENV)
+OPERATOR ?= $(UV) run python scripts/aws_cli.py
+
+aws-bundle: ## Build the deployable Python package, with dependencies vendored
+	$(UV) run python scripts/build_lambda_bundle.py
+
+aws-bundle-fast: ## Build the bundle without dependencies: enough to synthesise, not to deploy
+	@$(UV) run python scripts/build_lambda_bundle.py --no-deps
+
+aws-preflight: ## Verify account, Region, models, and that nothing is armed
+	$(OPERATOR) preflight
+
+aws-bootstrap-cdk: ## Bootstrap CDK in this account and Region (once per account)
+	cd $(CDK_DIR) && $(CDK) bootstrap
+
+# Two passes, and both are necessary. The exhibition is compiled against the API's
+# URL and the API answers the exhibition's origin, and neither exists until the stack
+# does. Pass one creates them; pass two supplies each to the other.
+aws-deploy: aws-preflight aws-bundle ## Deploy, rebuild the exhibition against the API, deploy again
+	cd $(CDK_DIR) && $(CDK) deploy $(STACK) -c environment=$(AWS_ENV) --require-approval any-change
+	@$(MAKE) aws-web-build
+	AS_ALLOWED_ORIGINS=$$(aws cloudformation describe-stacks --stack-name $(STACK) \
+		--query "Stacks[0].Outputs[?OutputKey=='CloudFrontUrl'].OutputValue" --output text) \
+		bash -c 'cd $(CDK_DIR) && $(CDK) deploy $(STACK) -c environment=$(AWS_ENV) \
+		--require-approval any-change'
+	@$(MAKE) aws-outputs
+
+aws-web-build: ## Build the exhibition against the deployed API. No fixture data.
+	@$(eval AS_API_URL := $(shell aws cloudformation describe-stacks --stack-name $(STACK) \
+		--query "Stacks[0].Outputs[?OutputKey=='ApiUrl'].OutputValue" --output text))
+	@$(eval AS_RUN_ID := $(shell aws cloudformation describe-stacks --stack-name $(STACK) \
+		--query "Stacks[0].Outputs[?OutputKey=='PilotRunId'].OutputValue" --output text))
+	@test -n "$(AS_API_URL)" || (echo "no ApiUrl output; deploy the stack first" && exit 1)
+	VITE_API_BASE_URL=$(AS_API_URL) VITE_PUBLIC_RUN_ID=$(AS_RUN_ID) \
+		VITE_DEPLOYMENT_MODE=$(AWS_ENV) VITE_FIXTURE_MODE=false \
+		$(WEB) build
+
+aws-outputs: ## Print the deployment outputs an operator needs
+	@aws cloudformation describe-stacks --stack-name $(STACK) \
+		--query "Stacks[0].Outputs[].[OutputKey,OutputValue]" --output table
+
+aws-bootstrap: ## Create the staging run: six identical seeds, cycle 0, nothing generated
+	$(OPERATOR) bootstrap
+
+aws-status: ## Where the deployed run has got to
+	$(OPERATOR) status
+
+aws-cycle: ## Advance the deployed run by one cycle, from this process
+	$(OPERATOR) cycle
+
+aws-execution-inspect: ## Whether the deployed function may advance the run
+	$(OPERATOR) execution inspect
+
+aws-execution-enable: ## Arm the deployed function. It can then spend on model calls.
+	$(OPERATOR) execution enable
+
+aws-execution-disable: ## Disarm the deployed function
+	$(OPERATOR) execution disable
+
+aws-schedule-inspect: ## What the schedule is set to, and whether it is armed
+	$(OPERATOR) schedule inspect
+
+aws-schedule-enable: ## Arm the schedule. Refuses unless the function is armed too.
+	$(OPERATOR) schedule enable
+
+aws-schedule-disable: ## Disarm the schedule
+	$(OPERATOR) schedule disable
+
+aws-invoke-once: ## Fire the deployed run-cycle function once, exactly as the schedule would
+	$(OPERATOR) schedule invoke-once
+
+aws-export: ## Write the complete dataset to the export bucket
+	$(OPERATOR) export
+
+aws-smoke: ## Real Bedrock smoke tests. Costs money. Needs ALLOW_BEDROCK_CALLS=1.
+	ALLOW_BEDROCK_CALLS=1 $(UV) run pytest tests/smoke -m smoke -v
+
+aws-destroy: ## Tear the stack down. Refuses production, which retains its data.
+	@test "$(AWS_ENV)" != "production" || (echo "refusing to destroy production" && exit 1)
+	cd $(CDK_DIR) && $(CDK) destroy $(STACK) -c environment=$(AWS_ENV)

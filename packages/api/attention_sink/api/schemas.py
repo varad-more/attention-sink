@@ -17,7 +17,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from attention_sink.analysis import GraveyardEntry
+from attention_sink.analysis import GraveyardEntry, export_labels
 from attention_sink.domain import ArmId, MemoryState
 from attention_sink.pilot import ArmCycleSnapshot
 from attention_sink.pilot.repositories import RunRecord, StoredInterview
@@ -35,17 +35,38 @@ __all__ = [
 
 
 class ApiEnvelope[T](BaseModel):
-    """One shape for every response, so a client parses one thing."""
+    """One shape for every response, so a client parses one thing.
+
+    ``simulated`` and ``labels`` describe the run the response came from, and are
+    said on every response rather than once at the root because a client renders
+    responses, not roots. The defaults are the safe direction -- simulated, local,
+    non-canonical -- so a route that forgot to name its run under-claims rather than
+    over-claims. :meth:`of` is how a run-scoped route fills them in, and every such
+    route uses it.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     schema_version: Literal[1] = 1
     data: T
     simulated: bool = True
-    """Every response from a local API describes a fixture run. Said on every
-    response rather than once at the root, because a client displays responses."""
-
     labels: tuple[str, ...] = ("LOCAL_FIXTURE", "NON_CANONICAL", "SIMULATED_MODEL_OUTPUTS")
+
+    @classmethod
+    def of(cls, data: T, run: RunRecord | None = None) -> ApiEnvelope[T]:
+        """Wrap ``data``, described by the run it came from.
+
+        Derived rather than defaulted, because the first deployed API told every
+        reader that a run driven by real Bedrock generations was a local fixture --
+        which is the one thing these two fields exist to prevent.
+        """
+        if run is None:
+            return cls(data=data)
+        return cls(
+            data=data,
+            simulated=run.configuration.simulated,
+            labels=export_labels(run),
+        )
 
 
 class Page[T](BaseModel):

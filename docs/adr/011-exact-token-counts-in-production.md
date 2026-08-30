@@ -1,6 +1,9 @@
 # 11. Production budgets are counted by the model; the heuristic stays for tests
 
-Status: Accepted, 2026-08-29. Amends ADR-008.
+Status: Accepted, 2026-08-29. Amends ADR-008. Amended in turn by
+[ADR-012](012-approximate-token-counts-in-staging.md), which lets a deployment whose
+Region offers no model supporting `CountTokens` _declare_ the approximate counter --
+never fall back to it, and never for a canonical run.
 
 ## Context
 

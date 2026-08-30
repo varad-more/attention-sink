@@ -33,7 +33,19 @@ from attention_sink.domain import (
 )
 from attention_sink.pilot.protocol import CitationMode, ModelCallLimits, ProtocolBundle
 
-__all__ = ["ModelSpec", "PilotRunConfiguration", "RunKind"]
+__all__ = [
+    "EXACT_TOKEN_COUNT_SOURCES",
+    "ModelSpec",
+    "PilotRunConfiguration",
+    "RunKind",
+]
+
+EXACT_TOKEN_COUNT_SOURCES: frozenset[str] = frozenset({"bedrock_count_tokens"})
+"""Counter sources that measure text the way the model that reads it does.
+
+A canonical run must be denominated in one of these. Everything else is an
+approximation, which is fine to *record* and never fine to present as the model's own
+count (ADR-011, amended by ADR-012)."""
 
 
 class RunKind(StrEnum):
@@ -127,7 +139,9 @@ class PilotRunConfiguration(BaseModel):
     """What produced the counts the budget is denominated in.
 
     ``local_fixture_heuristic`` marks a PROVISIONAL_LOCAL_APPROXIMATION: exact for
-    what it measures, and not the production model's tokenisation."""
+    what it measures, and not the production model's tokenisation. Anything not in
+    :data:`EXACT_TOKEN_COUNT_SOURCES` is an approximation, and a canonical run may
+    not be denominated in one -- see :meth:`require_run_kind_consistent`."""
 
     # ---------------------------------------------------------------- models
     writer_model: ModelSpec
@@ -222,12 +236,21 @@ class PilotRunConfiguration(BaseModel):
         against a provider during a phase that declared it would not.
 
         Raises:
-            ValueError: The run kind and the models disagree.
+            ValueError: The run kind and the models disagree, or a canonical run is
+                denominated in an approximate token count.
         """
         if self.canonical and self.simulated:
             msg = (
                 f"run {self.run_id} is marked {self.run_kind.value} but its models are "
                 f"simulated; a fabricated generation must never be served as a result"
+            )
+            raise ValueError(msg)
+        if self.canonical and self.token_count_source not in EXACT_TOKEN_COUNT_SOURCES:
+            msg = (
+                f"run {self.run_id} is marked {self.run_kind.value} but its budget is "
+                f"denominated in {self.token_count_source!r}, which is an "
+                f"approximation; a canonical run is counted with the model's own "
+                f"tokeniser or not at all"
             )
             raise ValueError(msg)
         if self.run_kind.simulated_expected and not self.simulated:
@@ -252,8 +275,14 @@ class PilotRunConfiguration(BaseModel):
         app_version: str,
         git_commit: str | None = None,
         run_kind: RunKind = RunKind.LOCAL_FIXTURE,
+        token_count_source: str | None = None,
     ) -> PilotRunConfiguration:
         """Derive a run configuration from validated protocol files.
+
+        ``token_count_source`` overrides what the protocol declares, for a deployment
+        that counted with something else. Recorded rather than assumed: a manifest
+        that named the protocol's intended counter while the run used another would
+        be the one place a reader could not check.
 
         Raises:
             ValueError: The protocol has not been calibrated, so there is no budget
@@ -291,7 +320,7 @@ class PilotRunConfiguration(BaseModel):
             arms=protocol.arms,
             memory_budget_tokens=protocol.memory_budget_tokens,
             counter_version=protocol.counter_version,
-            token_count_source=protocol.token_count_source,
+            token_count_source=token_count_source or protocol.token_count_source,
             writer_model=writer_model,
             embedding_model=embedding_model,
             writer_prompt_version=protocol.writer_prompt_version,

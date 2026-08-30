@@ -1,65 +1,80 @@
-# Pilot Phase 6 - the local exhibition and the release candidate
-
-Local-First Remaining-Phases Override binding. No AWS credentials, no AWS calls, no
-AWS resources.
+# Pilot Phase 7 — AWS adapters, CDK, staging deployment, real Bedrock smoke testing
 
 ## Plan
 
-- [x] 1. Validated frontend configuration; production-like builds fail without it.
-- [x] 2. Seven routes.
-- [x] 3. Landing page: premise, badges, run and analysis status, six cards, links.
-- [x] 4. Six Minds: cards, cycle selector, focus mode, comparison table, evidence.
-- [x] 5. Graveyard: every retirement, six filters, five sorts, state in the URL.
-- [x] 6. Memory detail and lineage, with no prompt text anywhere.
-- [x] 7. Timeline: accessible SVG, keyboard scrubber, table carrying the same figures.
-- [x] 8. Interviews: checkpoint and question selectors, six answers side by side.
-- [x] 9. Graveyard Echo: both texts, both similarities, the delta, careful language.
-- [x] 10. Methodology, including all eight required limitations.
-- [x] 11. Polling that pauses when hidden and never moves a pinned cycle.
-- [x] 12. Accessibility: landmarks, focus, labels, text alternatives, contrast.
-- [x] 13. `make pilot-local-demo`, `-build`, `-e2e`, `-release-check`.
-- [x] 14. Fourteen Playwright flows, desktop and mobile.
-- [x] 15. Release readiness and requirements traceability.
-- [x] 16. Local release artifacts, all labelled.
+- [x] Survey the existing ports, SQLite adapter, services, API, CDK app
+- [x] STEP 1 — credential preflight, as a command rather than a checklist
+- [x] STEP 2 — `DynamoRepository`, one table, one partition per run, no scans
+- [x] STEP 3 — the atomic six-arm commit, one `TransactWriteItems`
+- [x] STEP 4 — `S3ExportStorage` behind an `ExportStorage` seam; local retained
+- [x] STEP 5 — three Lambda handlers, thin over the existing services
+- [x] STEP 6 — `PilotStack` in three environment configurations
+- [x] STEP 7 — least-privilege IAM, written out rather than granted
+- [x] STEP 8 — one schedule, disabled, with operator commands
+- [x] STEP 9 — CloudFront over a private bucket with OAC, SPA fallback, CSP
+- [x] STEP 10 — structured logging, four metric filters, nine alarms
+- [x] STEP 11 — CDK unit tests and assertions, 38 of them, before deploying
+- [x] STEP 12 — deployed to staging
+- [x] STEP 13 — `run_aws_staging` created from the locally validated protocol
+- [x] STEP 14 — real Bedrock smoke tests and a real six-arm cycle
+- [x] STEP 15 — failure tests, four in staging and six under moto
+- [x] STEP 16 — `docs/pilot/aws-staging-report.md`
+- [x] `make verify` green; local mode still passes all 16 checks
 
 ## Review
 
-**The suites found two real defects that review had not.**
+### What was built
 
-The first was mine, from Phase 5: one SQLite connection shared across Starlette's
-threadpool. The Phase 5 code carried a comment arguing `check_same_thread=False` was
-safe because writes were serialised. That reasoning was wrong - the flag silences the
-thread check but does not make a connection re-entrant - and the first Playwright run
-produced `sqlite3.InterfaceError: bad parameter or other API misuse`. Fixed with one
-connection per thread. The comment that defended it has been replaced with one that
-says what actually happened.
+`packages/aws` is the only package above the model gateway that imports an AWS SDK:
+the DynamoDB repository, the S3 export storage, the structured logger, the
+cycle-completed event, the deployment settings, the composition root, and the three
+handlers. `infrastructure/cdk` gained `PilotStack` and three environment
+configurations. Nothing above the adapter line changed to fit AWS.
 
-The second was an accessibility failure that would have shipped: every route returned
-its `h1` only after data loaded, so a slow or failed load left the page with no
-heading at all - worst exactly when a reader most needs to know where they are. Every
-route now renders its heading first.
+### Four decisions worth recording
 
-A third problem was found while wiring the exhibition: the browser was receiving 200s
-and discarding them, because the frontend runs on a different port and the API had no
-CORS headers. An explicit origin list rather than a wildcard - the API is read-only,
-but read-only is not a reason to let any page on the internet read a run.
+**The lock lives on the run's own item.** A separate lock item would need its own
+transaction entry and its own race; as attributes of `RUN#{id} / META`, "the run is
+where I left it" and "the lock is still mine" are one condition on one item.
 
-**The public names live in exactly one file.** `apps/web/src/arms.ts` is the only
-place "Goldfish" or "Dreamer" appears. Not the protocol, not the database, not an API
-response, not a prompt. A test asserts each `arm_id` does not contain its own public
-name, because that is the shape the leak would take.
+**Immutability is a write condition.** SQLite refuses to rewrite a snapshot with a
+trigger. DynamoDB has no triggers, so a snapshot is written with
+`attribute_not_exists` and a rewrite fails rather than replacing a committed record.
 
-**Two API additions were needed and one was a shortcut being repaid.** The exhibition
-needs echo texts and contradiction classifications, which cost embeddings and
-sometimes a model call to produce, so they are stored rather than recomputed per
-request - a new `analysis_artifacts` table and migration 2. The divergence route had
-been reading from the `embeddings` table in Phase 5, which was a misuse of a table
-named for something else; it now reads the artifact.
+**The analysis handler claims a cycle before it works and releases the claim if it
+fails.** Claiming afterwards would let two deliveries both analyse; claiming without
+releasing would let one crash make a cycle permanently unanalysed. Both were exercised
+for real in staging.
 
-**Question scores had no arm.** `QuestionScore` recorded what matched but not who
-answered, so the interview view could not attribute a score to a mind. Caught by an
-eslint rule flagging a condition I had written to paper over it. `arm_id` and `cycle`
-are now on the record.
+**The counter is declared, never fallen back to.** Bedrock `CountTokens` is
+unavailable for every model this account can reach, and the engine counts on every
+cycle. ADR-012 makes `TOKEN_COUNT_SOURCE` a declaration recorded in the manifest, and
+refuses an approximate one for a canonical run.
 
-**Nothing is FAIL or PARTIAL.** Everything deferred is deferred because it needs an
-AWS account, and each deferred item has a local adapter standing in for it today.
+### Three defects, and where each came from
+
+**Bedrock model identifiers do not fit in a `Version`.** Found by the first deployed
+analysis. `amazon.nova-micro-v1:0` carries a colon; fixture mode returns
+`fixture-evaluator-v1`, which is already version-shaped, so every local run passed.
+Fixed with `version_token`, which transliterates rather than hashes.
+
+**The export and the API labelled real generations as simulated fixtures.** Found by
+reading the first deployed export. `EXPORT_LABELS` and `ApiEnvelope.simulated` were
+constants. Both are now derived from the run, as four independent labels.
+
+**A redaction pass that could never fire.** Found while closing a coverage gap:
+`telemetry.py` filtered field _names_ for secrets after already filtering by a closed
+allowlist that excluded all of them. Deleted. The allowlist is the whole guarantee,
+and a second weaker rule beside it is the one somebody would come to rely on.
+
+### What is deliberately not here
+
+No canonical run, no Step Functions, no event ledger, no WebSocket, no SNS topic
+behind the alarms, and no production deployment. Each is listed with its reason in
+`docs/implementation-status.md`.
+
+### Cleaning up
+
+Every resource this phase created, and how to remove it, is
+`docs/pilot/aws-staging-teardown.md`. `make aws-destroy AWS_ENV=staging` removes all
+of it. The stack currently sits disarmed: execution disabled, schedule disabled.

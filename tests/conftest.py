@@ -18,6 +18,7 @@ _MARKER_BY_DIRECTORY = {
     "unit": "unit",
     "property": "property",
     "integration": "integration",
+    "smoke": "smoke",
     "e2e": "e2e",
 }
 _TESTS_ROOT = Path(__file__).parent

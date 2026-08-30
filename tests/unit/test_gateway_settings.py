@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from attention_sink.model_gateway import (
@@ -113,3 +115,61 @@ def test_settings_round_trip_through_json():
     settings = GatewaySettings.from_env(env=BEDROCK_ENV)
 
     assert GatewaySettings.model_validate_json(settings.model_dump_json()) == settings
+
+
+# ------------------------------------------------------------ the token counter
+
+
+def test_the_budget_is_counted_by_the_model_unless_a_deployment_says_otherwise():
+    """ADR-012: declared, never inferred, and never a fallback."""
+    from attention_sink.model_gateway import TokenCountSource
+
+    assert GatewaySettings.from_env(env={}).token_count_source is TokenCountSource.BEDROCK
+    declared = GatewaySettings.from_env(env={"TOKEN_COUNT_SOURCE": "heuristic"})
+    assert declared.token_count_source is TokenCountSource.HEURISTIC
+
+
+def test_an_unknown_counter_source_is_refused_by_name():
+    with pytest.raises(ConfigurationError, match="TOKEN_COUNT_SOURCE"):
+        GatewaySettings.from_env(env={"TOKEN_COUNT_SOURCE": "approximate"})
+
+
+def test_a_bedrock_gateway_builds_the_counter_its_settings_declare():
+    from attention_sink.model_gateway import (
+        ApproximateTokenCounter,
+        BedrockTokenCounter,
+        build_gateway,
+    )
+
+    models = {
+        "AWS_REGION": "us-east-1",
+        "WRITER_MODEL_ID": "amazon.nova-lite-v1:0",
+        "AUDITOR_MODEL_ID": "amazon.nova-lite-v1:0",
+        "JUDGE_MODEL_ID": "amazon.nova-lite-v1:0",
+        "SUMMARY_MODEL_ID": "amazon.nova-lite-v1:0",
+        "EMBEDDING_MODEL_ID": "amazon.titan-embed-text-v2:0",
+        "MODEL_MODE": "bedrock",
+    }
+
+    class _NoClient:
+        """A client that would fail if the factory called it. It never does."""
+
+        def count_tokens(self, **_: Any) -> Any:
+            raise AssertionError("no counting happens while building a gateway")
+
+        def invoke_model(self, **_: Any) -> Any:
+            raise AssertionError("no invocation happens while building a gateway")
+
+    unused: Any = _NoClient()
+    exact = build_gateway(GatewaySettings.from_env(env=models), client=unused)
+    assert isinstance(exact.token_counter, BedrockTokenCounter)
+
+    approximate = build_gateway(
+        GatewaySettings.from_env(env={**models, "TOKEN_COUNT_SOURCE": "heuristic"}),
+        client=unused,
+    )
+    assert isinstance(approximate.token_counter, ApproximateTokenCounter)
+    # Approximate, but not simulated: the models behind this run are real.
+    assert approximate.token_counter.simulated is False
+    assert approximate.token_counter.version == "heuristic-v1"
+    assert approximate.token_counter.model_id == "amazon.nova-lite-v1:0"

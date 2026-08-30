@@ -31,7 +31,6 @@ from attention_sink.model_gateway.fixtures import (
     FIXTURE_REGION,
     FixtureEmbeddingProvider,
     FixtureInvoker,
-    FixtureTokenCounter,
 )
 from attention_sink.model_gateway.interfaces import (
     DEFAULT_ACCEPTED_LEVELS,
@@ -53,8 +52,9 @@ from attention_sink.model_gateway.settings import (
     ModelMode,
     RuntimeMode,
     RuntimeSettings,
+    TokenCountSource,
 )
-from attention_sink.model_gateway.tokens import BedrockTokenCounter
+from attention_sink.model_gateway.tokens import ApproximateTokenCounter, BedrockTokenCounter
 
 __all__ = ["ModelGateway", "build_gateway"]
 
@@ -141,7 +141,9 @@ def build_gateway(
             simulated=True,
             accepted_levels=accepted_levels,
             prompt_version=prompt_version,
-            token_counter=FixtureTokenCounter(),
+            token_counter=ApproximateTokenCounter(
+                model_id=FIXTURE_MODEL_ID, region=FIXTURE_REGION, simulated=True
+            ),
             embeddings=FixtureEmbeddingProvider(dimensions=min(embedding_dimensions, 1024)),
         )
 
@@ -176,11 +178,22 @@ def build_gateway(
         simulated=False,
         accepted_levels=accepted_levels,
         prompt_version=prompt_version,
-        token_counter=BedrockTokenCounter(
-            model_id=configured.writer_model_id,
-            region=configured.region,
-            client=runtime_client,
-            retrier=retrier(),
+        # Chosen from configuration, never fallen back to. See ADR-012: a Region
+        # with no model supporting CountTokens is a reason to declare the
+        # approximate counter in the manifest, not a reason to use it quietly.
+        token_counter=(
+            BedrockTokenCounter(
+                model_id=configured.writer_model_id,
+                region=configured.region,
+                client=runtime_client,
+                retrier=retrier(),
+            )
+            if settings.token_count_source is TokenCountSource.BEDROCK
+            else ApproximateTokenCounter(
+                model_id=configured.writer_model_id,
+                region=configured.region,
+                simulated=False,
+            )
         ),
         embeddings=BedrockEmbeddingProvider(
             model_id=configured.embedding_model_id,

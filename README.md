@@ -97,15 +97,40 @@ experiment cannot tell you. Every page is labelled `LOCAL SIMULATION`.
 See [docs/pilot-scope.md](docs/pilot-scope.md) for what the pilot narrows and why, and
 [docs/pilot/local-backend.md](docs/pilot/local-backend.md) for the persisted backend.
 
+## Deploying to AWS
+
+The same domain logic, application services, API contracts, and frontend run on AWS
+behind different adapters: DynamoDB instead of SQLite, S3 instead of a directory,
+three Lambdas instead of a command line, Bedrock instead of fixtures.
+
+**Everything deploys inert.** Execution is disabled, the schedule is disabled, and no
+environment is canonical -- in all three configurations. Arming a deployment is an
+explicit operator action against a deployed stack, never a consequence of `cdk deploy`.
+
+```bash
+make aws-preflight       # account, Region, model access, and that nothing is armed
+make aws-deploy          # bundle, deploy, build the exhibition, deploy again
+make aws-bootstrap       # create the staging run: six identical seeds, cycle 0
+make aws-cycle           # one cycle, once, against real models
+make aws-schedule-inspect
+make aws-destroy         # everything, in one command
+```
+
+`make aws-smoke` runs the Bedrock smoke tests; they cost money and are skipped unless
+`ALLOW_BEDROCK_CALLS=1`. What a deployment created and how to remove it is
+[docs/pilot/aws-staging-teardown.md](docs/pilot/aws-staging-teardown.md); what the
+staging deployment actually proved is
+[docs/pilot/aws-staging-report.md](docs/pilot/aws-staging-report.md).
+
 ## Repository layout
 
 ```
 apps/web/            React client
-services/            One directory per Lambda handler
-packages/            Importable libraries, no AWS dependency below the adapter line
+packages/            Importable libraries; only packages/aws imports an AWS SDK
+packages/aws/        The DynamoDB and S3 adapters and the three Lambda handlers
 infrastructure/cdk/  AWS CDK v2 application
 experiment/pilot/    The Station Kestrel protocol: seeds, stimuli, ledger, manifest
-scripts/             Local runners: validate, calibrate, one cycle, the whole experiment
+scripts/             Local runners and the two composition roots (local_cli, aws_cli)
 datasets/fixtures/   Deterministic fixtures for local mode
 docs/                Architecture, methodology, operations, and decision records
 tests/               unit, property, integration, e2e
@@ -117,6 +142,8 @@ tests/               unit, property, integration, e2e
 - [Memory policies](docs/memory-policies.md) - the exact algorithm and tie-breaker for every arm
 - [Model gateway](docs/model-gateway.md) - the seven model roles, prompts and their digests, schemas, failures, and metadata
 - [Pilot scope](docs/pilot-scope.md) - what the 24-cycle pilot runs, and where it narrows the production design
+- [AWS staging report](docs/pilot/aws-staging-report.md) - what the deployment proved, and what still blocks canonical execution
+- [AWS staging teardown](docs/pilot/aws-staging-teardown.md) - every resource a deployment creates, and how to remove it
 - [System context](docs/architecture/system-context.md)
 - [Container view](docs/architecture/container-view.md)
 - [Architecture decision records](docs/adr/)

@@ -30,7 +30,7 @@ from attention_sink.analysis.metrics import (
     score_origin_recall,
     secondary_metrics,
 )
-from attention_sink.domain import ArmId, MetricEvidence
+from attention_sink.domain import ArmId, MetricEvidence, version_token
 from attention_sink.model_gateway import EvaluationTask, ModelGateway
 from attention_sink.pilot import ArmCycleSnapshot
 from attention_sink.pilot.protocol import ProtocolBundle
@@ -424,7 +424,15 @@ def _identity_question_ids() -> tuple[str, ...]:
 
 
 def _evaluator_version(gateway: ModelGateway) -> str:
-    """The evaluator a metric was scored under, recorded even when it was not asked."""
+    """The evaluator a metric was scored under, recorded even when it was not asked.
+
+    Transliterated, because a vendor model identifier is not a version string:
+    ``amazon.nova-lite-v1:0`` carries a colon and ``MetricEvidence.evaluator_version``
+    is a ``Version``. The run manifest keeps the identifier verbatim; this is the form
+    that fits in the field, and it stays legible enough to match the two up.
+    """
     settings: Any = gateway.settings
     models = settings.models
-    return "fixture-evaluator-v1" if models is None else str(models.judge_model_id)
+    if models is None:
+        return "fixture-evaluator-v1"
+    return version_token(str(models.judge_model_id))

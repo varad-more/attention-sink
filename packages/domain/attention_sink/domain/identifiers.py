@@ -33,6 +33,7 @@ __all__ = [
     "StimulusId",
     "UtcTimestamp",
     "Version",
+    "version_token",
 ]
 
 IDENTIFIER_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
@@ -64,6 +65,38 @@ ProtocolVersion = Version
 
 CycleNumber = Annotated[int, Ge(0)]
 """Zero-based index of a cycle within a run."""
+
+
+def version_token(text: str) -> str:
+    """Render an arbitrary identifier as a :data:`Version`.
+
+    A vendor's model identifier is not a version string: ``amazon.nova-lite-v1:0``
+    carries a colon, and an inference profile carries slashes, neither of which
+    :data:`VERSION_PATTERN` admits. They still have to reach the records that say
+    which evaluator produced a score, so they are transliterated rather than hashed:
+    every rejected character becomes ``-``, which keeps the identifier legible to a
+    reader who has to match it against a run manifest.
+
+    Deterministic and lossy in one direction only. Two different model identifiers
+    could in principle collapse to the same token, so the manifest keeps the
+    identifier verbatim as well; this is the form that fits in a version field, not a
+    replacement for recording what was used.
+
+    Raises:
+        ValueError: ``text`` is empty, or contains no character a version may start
+            with. Refused rather than padded: a version nobody can trace back is
+            worse than a missing one.
+    """
+    rendered = "".join(character if _is_version_safe(character) else "-" for character in text)
+    trimmed = rendered.lstrip("-")[:64]
+    if not trimmed:
+        msg = f"{text!r} has no character a version string may be built from"
+        raise ValueError(msg)
+    return trimmed
+
+
+def _is_version_safe(character: str) -> bool:
+    return character.isascii() and (character.isalnum() or character in "._+-")
 
 
 def _require_utc(value: datetime) -> datetime:

@@ -136,3 +136,37 @@ def test_the_proposed_budget_always_leaves_room_and_rounds_up(seed_tokens: int):
     budget = proposed_budget(seed_tokens)
     assert budget > seed_tokens
     assert budget % BUDGET_ROUNDING == 0
+
+
+def test_a_canonical_run_refuses_an_approximate_token_count(pilot_bundle: ProtocolBundle):
+    """ADR-012: a canonical run is counted with the model's own tokeniser or not at all.
+
+    The refusal is a validator rather than a convention, and it fires before a cycle
+    can spend anything.
+    """
+    from attention_sink.pilot import ModelSpec
+    from attention_sink.pilot.configuration import EXACT_TOKEN_COUNT_SOURCES
+
+    real = ModelSpec(
+        model_id="amazon.nova-lite-v1:0",
+        region="us-east-1",
+        temperature=0.7,
+        top_p=0.9,
+        max_output_tokens=1024,
+        simulated=False,
+    )
+    approximate = configuration(pilot_bundle).model_copy(
+        update={
+            "run_kind": RunKind.AWS_CANONICAL,
+            "writer_model": real,
+            "embedding_model": real,
+            "token_count_source": "local_fixture_heuristic",
+        }
+    )
+    with pytest.raises(ValueError, match="approximation"):
+        approximate.require_run_kind_consistent()
+
+    exact = approximate.model_copy(
+        update={"token_count_source": next(iter(EXACT_TOKEN_COUNT_SOURCES))}
+    )
+    exact.require_run_kind_consistent()
