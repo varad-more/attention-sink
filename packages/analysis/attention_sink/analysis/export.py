@@ -45,6 +45,7 @@ from attention_sink.pilot.repositories import (
 __all__ = [
     "EXPORT_FILES",
     "EXPORT_LABELS",
+    "PRIVATE_TRUTH_FIELDS",
     "ExportResult",
     "ExportStorage",
     "LocalExportStorage",
@@ -85,9 +86,34 @@ def export_labels(run: RunRecord) -> tuple[str, ...]:
     )
 
 
+PRIVATE_TRUTH_FIELDS: frozenset[str] = frozenset(
+    {"answer_terms", "accepted_variants", "evaluator_fallback"}
+)
+"""Fields of a canonical fact that are scoring apparatus rather than the fact.
+
+`answer_terms` and its variants are what an answer must contain to count as recall,
+and `evaluator_fallback` is when a rule gives up and asks a model. Publishing them
+would publish the mark scheme: a future run of this protocol could be tuned against
+the words that score, which is the one thing the ledger is kept out of prompts to
+prevent. The statements themselves are published, because a reader cannot check
+Origin Recall without knowing what was supposed to be recalled.
+"""
+
+
+def _public_truth_ledger(bundle: ProtocolBundle) -> dict[str, Any]:
+    """The truth ledger with its scoring apparatus removed."""
+    ledger = bundle.truth_ledger.model_dump(mode="json")
+    ledger["facts"] = [
+        {key: value for key, value in fact.items() if key not in PRIVATE_TRUTH_FIELDS}
+        for fact in ledger["facts"]
+    ]
+    return ledger
+
+
 EXPORT_FILES: tuple[str, ...] = (
     "run-manifest.json",
     "protocol.json",
+    "truth-ledger.json",
     "seed-memories.json",
     "stimuli.json",
     "predictions.md",
@@ -248,6 +274,7 @@ def export_dataset(
             }
         ),
         "protocol.json": _document({**labels, "protocol": bundle.protocol.model_dump(mode="json")}),
+        "truth-ledger.json": _document({**labels, "truth_ledger": _public_truth_ledger(bundle)}),
         "seed-memories.json": _document(
             {**labels, "seed_world": bundle.seed_world.model_dump(mode="json")}
         ),

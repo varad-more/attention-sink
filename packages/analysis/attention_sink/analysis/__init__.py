@@ -15,6 +15,7 @@ from attention_sink.analysis.echo import EchoMeasurement, classify_echo, measure
 from attention_sink.analysis.export import (
     EXPORT_FILES,
     EXPORT_LABELS,
+    PRIVATE_TRUTH_FIELDS,
     ExportResult,
     ExportStorage,
     LocalExportStorage,
@@ -49,6 +50,7 @@ __all__ = [
     "EXPORT_LABELS",
     "IDENTITY_QUESTION_IDS",
     "METRIC_VERSION",
+    "PRIVATE_TRUTH_FIELDS",
     "AnalysisResult",
     "AnalysisService",
     "ContradictionFinding",

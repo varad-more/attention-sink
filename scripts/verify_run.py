@@ -20,11 +20,12 @@ against a second opinion about what the invariants mean.
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
-from attention_sink.analysis import build_graveyard, verify_checksums
+from attention_sink.analysis import EXPORT_FILES, build_graveyard, verify_checksums
 from attention_sink.domain import MemoryKind, MemoryStatus
 from attention_sink.pilot.local import DEFAULT_DATABASE, DEFAULT_RUN_ID
 from attention_sink.pilot.protocol import DEFAULT_PROTOCOL_ROOT, load_bundle
@@ -32,6 +33,25 @@ from attention_sink.pilot.repositories import PilotRepository
 
 Check = Callable[[], Iterator[str]]
 """A check yields one line per problem, and nothing at all when it passes."""
+
+SECRET_MARKERS: tuple[str, ...] = (
+    "AKIA",
+    "ASIA",
+    "aws_secret_access_key",
+    "aws_session_token",
+    "BEGIN PRIVATE KEY",
+    "BEGIN RSA PRIVATE KEY",
+    "Authorization:",
+    "Bearer ",
+    "answer_terms",
+    "accepted_variants",
+)
+"""Strings no published dataset may contain.
+
+The last two are not credentials: they are the truth ledger's scoring apparatus,
+and publishing the words an answer must contain to count as recall would let a
+later run be written against the mark scheme. See `PRIVATE_TRUTH_FIELDS`.
+"""
 
 
 def open_repository(source: str, database: Path) -> PilotRepository:
@@ -283,7 +303,10 @@ def run_checks(*, repository: PilotRepository, run_id: str, root: Path, export: 
             for snapshot in snapshots
         )
         if echoable and not any(name.startswith("graveyard_echo") for name in names):
-            yield f"a memory was retired before a later cycle but no echo was measured: {sorted(names)}"
+            yield (
+                f"a memory was retired before a later cycle but no echo was "
+                f"measured: {sorted(names)}"
+            )
 
     def checkpoint_analysis_exists() -> Iterator[str]:
         """Divergence, contradiction, and both identity metrics at every checkpoint."""
@@ -346,9 +369,60 @@ def run_checks(*, repository: PilotRepository, run_id: str, root: Path, export: 
         if not (export / "checksums.sha256").is_file():
             yield f"no checksums.sha256 in {export}"
             return
+        missing = [name for name in EXPORT_FILES if not (export / name).is_file()]
+        if missing:
+            yield f"the export is missing {', '.join(missing)}"
         failures = verify_checksums(export)
         if failures:
             yield f"checksum mismatch: {', '.join(failures)}"
+
+    def export_record_counts_match_the_run() -> Iterator[str]:
+        """The dataset holds exactly what the store does, not a subset of it."""
+        if export is None:
+            return
+        expected = {
+            "cycle-snapshots.jsonl": sum(len(s) for s in snapshots_by_arm.values()),
+            "interviews.jsonl": len(repository.get_interviews(run_id)),
+            "metrics.jsonl": len(repository.get_metrics(run_id)),
+        }
+        for name, count in expected.items():
+            path = export / name
+            if not path.is_file():
+                continue
+            written = sum(1 for line in path.read_text(encoding="utf-8").splitlines() if line)
+            if written != count:
+                yield f"{name} holds {written} records; the store holds {count}"
+
+    def export_carries_no_secret() -> Iterator[str]:
+        """Nothing that looks like a credential, a token, or a scoring key."""
+        if export is None:
+            return
+        for name in (*EXPORT_FILES, "checksums.sha256"):
+            path = export / name
+            if not path.is_file():
+                continue
+            text = path.read_text(encoding="utf-8", errors="replace")
+            for marker in SECRET_MARKERS:
+                if marker in text:
+                    yield f"{name} contains {marker!r}"
+
+    def export_holds_no_unreleased_data() -> Iterator[str]:
+        """No snapshot beyond the last committed cycle reached the dataset."""
+        if export is None:
+            return
+        path = export / "cycle-snapshots.jsonl"
+        if not path.is_file():
+            return
+        highest = max(
+            (
+                int(json.loads(line)["cycle"])
+                for line in path.read_text(encoding="utf-8").splitlines()
+                if line
+            ),
+            default=0,
+        )
+        if highest > run.current_cycle:
+            yield f"the export holds cycle {highest}; the run has committed {run.current_cycle}"
 
     checks: tuple[tuple[str, Check], ...] = (
         ("six arms exist", six_arms),
@@ -374,6 +448,9 @@ def run_checks(*, repository: PilotRepository, run_id: str, root: Path, export: 
         ("graveyard covers every eviction", graveyard_covers_every_eviction),
         ("compression records are distinct", compression_records_are_distinct),
         ("export checksums pass", export_checksums_pass),
+        ("export record counts match the run", export_record_counts_match_the_run),
+        ("export carries no secret", export_carries_no_secret),
+        ("export holds no unreleased data", export_holds_no_unreleased_data),
     )
 
     print(f"verifying {run_id} at cycle {run.current_cycle}/{configuration.maximum_cycles}")

@@ -17,6 +17,7 @@ from fastapi.testclient import TestClient
 
 from attention_sink.analysis import (
     EXPORT_FILES,
+    PRIVATE_TRUTH_FIELDS,
     AnalysisResult,
     AnalysisService,
     build_graveyard,
@@ -443,3 +444,22 @@ def test_an_export_is_labelled_from_the_run_and_not_from_a_constant(
         "REAL_MODEL_OUTPUTS",
         "EXACT_TOKEN_BUDGET",
     )
+
+
+def test_the_export_publishes_the_facts_and_not_the_mark_scheme(pipeline: Pipeline):
+    """A reader needs the statements to check Origin Recall, and must not get the keys.
+
+    `answer_terms` is what an answer has to contain to count as recall. Publishing it
+    would let a later run of this protocol be written against the words that score,
+    which is the reason the ledger never reaches a prompt in the first place.
+    """
+    published = json.loads((pipeline.export / "truth-ledger.json").read_text(encoding="utf-8"))
+    facts = published["truth_ledger"]["facts"]
+
+    assert len(facts) == 12
+    assert all(fact["statement"] and fact["fact_id"] and fact["seed_memory_id"] for fact in facts)
+    for private in PRIVATE_TRUTH_FIELDS:
+        assert all(private not in fact for fact in facts), private
+    raw = (pipeline.export / "truth-ledger.json").read_text(encoding="utf-8")
+    assert "answer_terms" not in raw
+    assert "mara venn" not in raw.lower().replace("mara venn.", "")
