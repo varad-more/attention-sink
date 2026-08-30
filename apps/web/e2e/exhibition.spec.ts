@@ -119,6 +119,19 @@ test('10: the Dreamer compression lineage resolves both ways', async ({ page }) 
   await expect(page.getByRole('heading', { name: 'Compressed from' })).toBeVisible();
 });
 
+test('11b: methodology names what produced the words, and does not misname it', async ({
+  page,
+}) => {
+  await page.goto('/methodology');
+  const limitations = page.getByTestId('limitations');
+  await expect(limitations).toContainText(
+    DEPLOYED ? 'One model, one setting, one repetition' : 'Fixture output is not evidence',
+  );
+  if (DEPLOYED) {
+    await expect(limitations).not.toContainText('This build runs deterministic local fixtures');
+  }
+});
+
 test('11: methodology states the limitations', async ({ page }) => {
   await page.goto('/methodology');
   await expect(page.getByRole('heading', { name: 'Methodology' })).toBeVisible();

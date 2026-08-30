@@ -10,6 +10,34 @@ import { useApi } from '../context';
 import { useOnce } from '../api/hooks';
 import { ARM_PRESENTATION } from '../arms';
 
+/**
+ * The caveat about what produced the words, which is different for each kind of run.
+ *
+ * Stated from the run rather than from the build. A page that told a reader it was
+ * running fixtures while serving real model output would be the most misleading
+ * sentence on the site, and a page that dropped the caveat entirely on a real run
+ * would be the second.
+ */
+function provenanceLimitation(simulated: boolean): { title: string; body: string } {
+  if (simulated) {
+    return {
+      title: 'Fixture output is not evidence about a production model',
+      body:
+        'This build runs deterministic local fixtures. The generations are structurally ' +
+        'plausible and semantically flat. Differences between arms here are differences between ' +
+        'mechanisms driven by a text generator, and say nothing about how a real model remembers.',
+    };
+  }
+  return {
+    title: 'One model, one setting, one repetition',
+    body:
+      'Every word here was written by a single model at a single temperature, and the run was ' +
+      'performed once. A different model, a different temperature, or a second run of this same ' +
+      'protocol could order the arms differently. What is shown is what these mechanisms did ' +
+      'under these conditions, not what they would do under others.',
+  };
+}
+
 const LIMITATIONS: { title: string; body: string }[] = [
   {
     title: 'External memory is not an internal KV cache',
@@ -25,13 +53,6 @@ const LIMITATIONS: { title: string; body: string }[] = [
       'When an agent says a thought rested on a memory, that is a report, validated only for ' +
       'being a memory it actually held. It is not a measurement of which tokens the model ' +
       'attended to, and an agent can be wrong about its own reasons.',
-  },
-  {
-    title: 'Fixture output is not evidence about a production model',
-    body:
-      'This build runs deterministic local fixtures. The generations are structurally ' +
-      'plausible and semantically flat. Differences between arms here are differences between ' +
-      'mechanisms driven by a text generator, and say nothing about how a real model remembers.',
   },
   {
     title: 'Embedding distance is an incomplete proxy',
@@ -78,6 +99,13 @@ export function Methodology() {
 
   const summary = run.data;
   const promptHashes = cycle.data?.[0]?.prompt_hashes ?? {};
+  // Placed where the fixture caveat used to sit, so the ordering of the list does not
+  // depend on what kind of run is being served.
+  const limitations = [
+    ...LIMITATIONS.slice(0, 2),
+    provenanceLimitation(summary?.simulated ?? true),
+    ...LIMITATIONS.slice(2),
+  ];
 
   return (
     <>
@@ -295,7 +323,7 @@ export function Methodology() {
       <h2>Limitations</h2>
       <p>Each of these is a reason not to believe more than the data supports.</p>
       <dl data-testid="limitations">
-        {LIMITATIONS.map((item) => (
+        {limitations.map((item) => (
           <div key={item.title}>
             <dt>
               <strong>{item.title}</strong>
