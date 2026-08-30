@@ -623,6 +623,25 @@ def build_canonical_manifest(
     }
 
 
+def _manifest_changes(before: Mapping[str, Any], after: Mapping[str, Any]) -> list[str]:
+    """The dotted paths at which two canonical manifests disagree.
+
+    Only deep enough to name the field an operator has to look at. `content_hash`
+    changes whenever anything else does, so reporting it alone would say a manifest
+    changed without saying what changed.
+    """
+    changes: list[str] = []
+    for key in sorted(set(before) | set(after)):
+        old, new = before.get(key), after.get(key)
+        if old == new:
+            continue
+        if isinstance(old, Mapping) and isinstance(new, Mapping):
+            changes.extend(f"{key}.{inner}" for inner in _manifest_changes(old, new))
+        else:
+            changes.append(key)
+    return [change for change in changes if change != "content_hash"]
+
+
 def write_canonical_manifest(
     bundle: ProtocolBundle,
     *,
@@ -638,6 +657,10 @@ def write_canonical_manifest(
 
     Returns:
         The manifest path, the digest path, and the digest.
+
+    Raises:
+        ProtocolError: The protocol is frozen and this would change the manifest that
+            is already there.
     """
     manifest = build_canonical_manifest(
         bundle, prompt_hashes=prompt_hashes, settings=settings, analysis=analysis
@@ -645,6 +668,22 @@ def write_canonical_manifest(
     manifest["content_hash"] = canonical_digest(manifest)
     rendered = json.dumps(manifest, indent=2, sort_keys=True) + "\n"
     path = bundle.root / CANONICAL_MANIFEST_PATH
+    # A frozen manifest is what a canonical run is bound to: the run records its hash,
+    # and every launch is refused unless the manifest still hashes to it. Rewriting it
+    # after the freeze does not re-freeze anything -- it silently invalidates the run
+    # that is already bound to the old hash. Re-running the freeze is a reasonable
+    # thing for an operator to do, so this refuses the change rather than the command,
+    # and identical content stays a no-op. Nothing lifts it: the constitution says no
+    # canonical result may be edited, and this is the file that says what canonical is.
+    if bundle.is_frozen and path.is_file():
+        existing = path.read_text(encoding="utf-8")
+        if existing != rendered:
+            changed = ", ".join(_manifest_changes(json.loads(existing), manifest)) or "its content"
+            msg = (
+                f"{path} is frozen and this would change {changed}; "
+                "retire the protocol and freeze a new one rather than editing this"
+            )
+            raise ProtocolError(msg)
     path.write_text(rendered, encoding="utf-8")
     digest = hashlib.sha256(rendered.encode("utf-8")).hexdigest()
     digest_path = bundle.root / CANONICAL_MANIFEST_DIGEST_PATH

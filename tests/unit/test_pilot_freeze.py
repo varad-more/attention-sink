@@ -344,3 +344,48 @@ def test_the_configured_models_are_recorded_and_never_invoked():
     assert isinstance(configured, ModelConfig)
     assert configured.writer_model_id == "amazon.nova-micro-v1:0"
     assert configured.region == "us-east-1"
+
+
+def test_a_frozen_manifest_refuses_to_be_rewritten(
+    calibrated: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """The freeze is only a freeze if running it again cannot change the file.
+
+    Re-running `make pilot-freeze` after a canonical run has started is an ordinary
+    operator mistake, and it used to rewrite `git_commit` and with it `content_hash` --
+    silently invalidating the run bound to the old hash, because a launch compares the
+    two. The command is allowed; the change is not.
+    """
+    frozen(calibrated)
+    before = read_canonical_manifest(calibrated)
+
+    # The commit is read from the process environment, which is exactly how the real
+    # mistake happened: the operator committed something, re-ran the freeze, and the
+    # manifest picked up the new commit without anybody asking it to.
+    monkeypatch.setenv("AS_GIT_COMMIT", "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef")
+    bundle = load_bundle(calibrated)
+    with pytest.raises(ProtocolError, match="frozen and this would change"):
+        write_canonical_manifest(
+            bundle,
+            prompt_hashes=_prompt_hashes(bundle),
+            settings=settings(),
+            analysis={"metric_version": "metric-v1"},
+        )
+
+    assert read_canonical_manifest(calibrated) == before
+
+
+def test_rewriting_a_frozen_manifest_with_identical_content_is_allowed(calibrated: Path):
+    """An operator who re-runs the freeze and changes nothing has changed nothing."""
+    frozen(calibrated)
+    before = read_canonical_manifest(calibrated)
+
+    bundle = load_bundle(calibrated)
+    write_canonical_manifest(
+        bundle,
+        prompt_hashes=_prompt_hashes(bundle),
+        settings=settings(),
+        analysis={"metric_version": "metric-v1"},
+    )
+
+    assert read_canonical_manifest(calibrated) == before

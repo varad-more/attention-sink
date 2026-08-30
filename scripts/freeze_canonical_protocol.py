@@ -85,15 +85,21 @@ def main() -> int:
 
     # The canonical manifest is written at both steps so that a reviewer can read the
     # complete definition before deciding to freeze it, rather than only afterwards.
-    path, digest_path, digest = write_canonical_manifest(
-        reloaded,
-        prompt_hashes=prompt_hashes,
-        # Built from the environment, so the manifest records the models the run will
-        # really use. In fixture mode this writes nulls, which is why a canonical run
-        # is refused against a manifest whose models are null.
-        settings=GatewaySettings.from_env(),
-        analysis=analysis_constants(),
-    )
+    # Once frozen it refuses to change, and that refusal is an answer to the operator
+    # rather than a traceback: re-running the freeze is a reasonable thing to do.
+    try:
+        path, digest_path, digest = write_canonical_manifest(
+            reloaded,
+            prompt_hashes=prompt_hashes,
+            # Built from the environment, so the manifest records the models the run
+            # will really use. In fixture mode this writes nulls, which is why a
+            # canonical run is refused against a manifest whose models are null.
+            settings=GatewaySettings.from_env(),
+            analysis=analysis_constants(),
+        )
+    except ProtocolError as exc:
+        print(f"FAILED: {exc}", file=sys.stderr)
+        return 1
     print(f"wrote {path}")
     print(f"wrote {digest_path}")
     print(f"  sha256 {digest}")
