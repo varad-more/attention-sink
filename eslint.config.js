@@ -28,6 +28,23 @@ export default tseslint.config(
     },
   },
   {
+    // The exhibition renders numbers into strings constantly -- cycle counts, token
+    // budgets, distances. `restrict-template-expressions` is there to stop `[object
+    // Object]` reaching a user, and a number in a template is never that.
+    files: ['apps/web/**/*.{ts,tsx}'],
+    rules: {
+      '@typescript-eslint/restrict-template-expressions': ['error', { allowNumber: true }],
+    },
+  },
+  {
+    files: ['apps/web/e2e/**/*.ts', '**/*.test.ts', '**/*.test.tsx'],
+    rules: {
+      // A test asserting on a value the types call impossible is a test asserting the
+      // types are right, which is exactly what a test should be free to do.
+      '@typescript-eslint/no-unnecessary-condition': 'off',
+    },
+  },
+  {
     files: ['**/*.js'],
     ...tseslint.configs.disableTypeChecked,
   },

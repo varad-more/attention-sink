@@ -125,8 +125,23 @@ def _command_analyze(args: argparse.Namespace) -> int:
     repository, _, bundle, gateway = _services(args)
     analysis = AnalysisService(repository=repository, bundle=bundle, gateway=gateway)
     result = analysis.analyse_run(args.run_id)
-    repository.store_embedding(
-        args.run_id, key="divergence", record={"matrices": result.divergence}
+    repository.store_analysis_artifact(
+        args.run_id, name="divergence", payload={"matrices": result.divergence}
+    )
+    repository.store_analysis_artifact(
+        args.run_id,
+        name="echoes",
+        payload={"items": [echo.model_dump(mode="json") for echo in result.echoes]},
+    )
+    repository.store_analysis_artifact(
+        args.run_id,
+        name="contradictions",
+        payload={"items": [f.model_dump(mode="json") for f in result.contradictions]},
+    )
+    repository.store_analysis_artifact(
+        args.run_id,
+        name="question_scores",
+        payload={"items": [s.model_dump(mode="json") for s in result.question_scores]},
     )
     print(SIMULATED_BANNER)
     print(f"metrics stored:    {len(result.metrics)}")

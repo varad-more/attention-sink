@@ -200,6 +200,13 @@ class CycleView(BaseModel):
     tokens_after: int
     budget_tokens: int
     policy_version: str
+    policy_decision_codes: list[str]
+    """Why the mechanism did what it did, in its own words.
+
+    Produced by deterministic code, never by a model. Published because the whole
+    exhibition rests on a reader being able to check a mechanism's reason against
+    what it actually retired."""
+
     prompt_versions: dict[str, str]
     prompt_hashes: dict[str, str]
     state_hash: str
@@ -235,6 +242,9 @@ class CycleView(BaseModel):
             tokens_after=snapshot.tokens_after,
             budget_tokens=snapshot.budget_tokens,
             policy_version=str(snapshot.policy_version),
+            policy_decision_codes=[
+                decision.decision_code.value for decision in snapshot.policy_decisions
+            ],
             prompt_versions=dict(snapshot.prompt_versions),
             prompt_hashes=dict(snapshot.prompt_hashes),
             state_hash=snapshot.state_hash,

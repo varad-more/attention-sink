@@ -190,8 +190,30 @@ _INITIAL = (
 )
 
 
+_ANALYSIS_ARTIFACTS = (
+    """
+    CREATE TABLE analysis_artifacts (
+        run_id         TEXT    NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE,
+        name           TEXT    NOT NULL,
+        schema_version INTEGER NOT NULL,
+        payload        TEXT    NOT NULL,
+        created_at     TEXT    NOT NULL,
+        updated_at     TEXT    NOT NULL,
+        PRIMARY KEY (run_id, name)
+    )
+    """,
+)
+"""Derived analysis output that is too large to recompute per request.
+
+The Graveyard is derived on demand because it is a projection of snapshots the
+reader already has. Echo measurements and contradiction classifications are not:
+they cost embeddings and, sometimes, a model call. Storing them is what lets the
+read API stay a read API."""
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(version=1, name="initial_pilot_schema", statements=_INITIAL),
+    Migration(version=2, name="analysis_artifacts", statements=_ANALYSIS_ARTIFACTS),
 )
 """Every migration, in the order they are applied. Append only; never edit."""
 

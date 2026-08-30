@@ -23,6 +23,7 @@ from collections.abc import Sequence
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query, Response
+from fastapi.middleware.cors import CORSMiddleware
 
 from attention_sink.analysis import build_graveyard, lineage_of
 from attention_sink.api.schemas import (
@@ -40,6 +41,20 @@ from attention_sink.pilot.repositories import PilotRepository, RunRecord
 from attention_sink.protocol import current_version
 
 __all__ = ["build_app"]
+
+DEFAULT_ALLOWED_ORIGINS: tuple[str, ...] = (
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:4173",
+    "http://127.0.0.1:4173",
+)
+"""Where the local exhibition is served from.
+
+The frontend runs on its own port, so every request it makes is cross-origin and a
+browser will discard an otherwise-successful response without these headers. An
+explicit list rather than a wildcard: the API is read-only, but "read-only" is not a
+reason to let any page on the internet read a run.
+"""
 
 MAX_PAGE_SIZE = 200
 """Nothing returns an unbounded list. A run has 144 snapshots today and a later one
@@ -67,7 +82,12 @@ def _mutable(response: Response) -> None:
     response.headers["Cache-Control"] = "no-cache"
 
 
-def build_app(repository: PilotRepository, bundle: ProtocolBundle | None = None) -> FastAPI:
+def build_app(
+    repository: PilotRepository,
+    bundle: ProtocolBundle | None = None,
+    *,
+    allowed_origins: Sequence[str] = DEFAULT_ALLOWED_ORIGINS,
+) -> FastAPI:
     """Build the read API over one repository.
 
     Args:
@@ -76,6 +96,7 @@ def build_app(repository: PilotRepository, bundle: ProtocolBundle | None = None)
             comes from a committed snapshot, which already carries the one stimulus
             that arm was shown; reading the deck here is exactly how a future
             stimulus would leak, so the deck is not consulted at all.
+        allowed_origins: Browser origins permitted to read this API.
     """
     del bundle
     version = current_version()
@@ -83,6 +104,13 @@ def build_app(repository: PilotRepository, bundle: ProtocolBundle | None = None)
         title="Attention Sink read API",
         summary="Completed cycles, arms, graveyard, interviews, and metrics.",
         version=version.app_version,
+    )
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=list(allowed_origins),
+        allow_methods=["GET"],
+        allow_headers=["accept", "content-type"],
+        expose_headers=["ETag"],
     )
 
     def _run_or_404(run_id: str) -> RunRecord:
@@ -273,11 +301,61 @@ def build_app(repository: PilotRepository, bundle: ProtocolBundle | None = None)
 
     @app.get("/runs/{run_id}/divergence")
     def get_divergence(run_id: str, response: Response) -> ApiEnvelope[dict[str, Any]]:
-        """The pairwise identity-distance matrix at each checkpoint."""
+        """The pairwise identity-distance matrix at each checkpoint.
+
+        Geometric distance between two identity documents. It says the answers moved
+        apart; it does not say why, and nothing downstream should read it as cause.
+        """
         _run_or_404(run_id)
-        stored = repository.get_embedding(run_id, key="divergence")
+        stored = repository.get_analysis_artifact(run_id, name="divergence")
         _mutable(response)
         return ApiEnvelope(data=stored or {"matrices": {}})
+
+    @app.get("/runs/{run_id}/echoes")
+    def get_echoes(
+        run_id: str,
+        response: Response,
+        arm_id: str | None = None,
+        limit: int = Query(default=100, ge=1, le=MAX_PAGE_SIZE),
+        offset: int = Query(default=0, ge=0),
+    ) -> ApiEnvelope[Page[dict[str, Any]]]:
+        """Measured resemblances between new memories and forgotten ones.
+
+        A measurement, not a claim. A positive delta means the new text sits closer
+        to something the arm can no longer see than to anything it can; it does not
+        mean the arm reached the forgotten record.
+        """
+        _run_or_404(run_id)
+        stored = repository.get_analysis_artifact(run_id, name="echoes") or {"items": []}
+        items = [item for item in stored["items"] if arm_id is None or item["arm_id"] == arm_id]
+        _mutable(response)
+        return ApiEnvelope(data=Page.of(items, limit=limit, offset=offset))
+
+    @app.get("/runs/{run_id}/contradictions")
+    def get_contradictions(
+        run_id: str,
+        response: Response,
+        cycle: int | None = None,
+        limit: int = Query(default=200, ge=1, le=MAX_PAGE_SIZE),
+        offset: int = Query(default=0, ge=0),
+    ) -> ApiEnvelope[Page[dict[str, Any]]]:
+        """How each checkpoint answer stood against the canonical record."""
+        _run_or_404(run_id)
+        stored = repository.get_analysis_artifact(run_id, name="contradictions") or {"items": []}
+        items = [item for item in stored["items"] if cycle is None or item["cycle"] == cycle]
+        _mutable(response)
+        return ApiEnvelope(data=Page.of(items, limit=limit, offset=offset))
+
+    @app.get("/runs/{run_id}/question-scores")
+    def get_question_scores(
+        run_id: str, response: Response, cycle: int | None = None
+    ) -> ApiEnvelope[list[dict[str, Any]]]:
+        """Per-question Origin Recall scores, with what matched and how."""
+        _run_or_404(run_id)
+        stored = repository.get_analysis_artifact(run_id, name="question_scores") or {"items": []}
+        _mutable(response)
+        del cycle
+        return ApiEnvelope(data=list(stored["items"]))
 
     @app.get("/runs/{run_id}/lineage/{memory_id}")
     def get_lineage(

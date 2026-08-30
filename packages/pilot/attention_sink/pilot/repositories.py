@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from datetime import datetime
-from typing import Literal, Protocol, Self, runtime_checkable
+from typing import Any, Literal, Protocol, Self, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -485,6 +485,21 @@ class PilotRepository(Protocol):
 
     def get_analysis_status(self, run_id: str, *, analysis_name: str) -> AnalysisStatus | None:
         """How far one analysis has got, or None if it has not started."""
+        ...
+
+    def store_analysis_artifact(
+        self, run_id: str, *, name: str, payload: Mapping[str, Any]
+    ) -> None:
+        """Persist one derived analysis document under a stable name.
+
+        For output that costs an embedding or a model call to produce. Anything
+        cheaply derivable from snapshots is derived on request instead, so the store
+        never holds two versions of one truth.
+        """
+        ...
+
+    def get_analysis_artifact(self, run_id: str, *, name: str) -> dict[str, Any] | None:
+        """The derived document stored under ``name``, or None."""
         ...
 
     # ----------------------------------------------------------------- export

@@ -277,7 +277,7 @@ def test_the_metrics_and_divergence_routes_answer(client: TestClient, store: Sql
 
     empty = client.get(f"/runs/{RUN_ID}/divergence").json()["data"]
     assert empty == {"matrices": {}}
-    store.store_embedding(RUN_ID, key="divergence", record={"matrices": {"0": {}}})
+    store.store_analysis_artifact(RUN_ID, name="divergence", payload={"matrices": {"0": {}}})
     assert client.get(f"/runs/{RUN_ID}/divergence").json()["data"] == {"matrices": {"0": {}}}
 
 
@@ -350,7 +350,10 @@ def test_a_migration_that_fails_rolls_itself_back(tmp_path: Path):
     with pytest.raises(sqlite3.OperationalError):
         _apply(connection, broken)
     assert current_version(connection) == 0
-    assert apply_migrations(connection, now=NOW.isoformat()) == (1,)
+    from attention_sink.persistence import MIGRATIONS
+
+    applied = apply_migrations(connection, now=NOW.isoformat())
+    assert applied == tuple(migration.version for migration in MIGRATIONS)
 
 
 def _apply(connection: object, migrations: object) -> None:
@@ -399,3 +402,59 @@ def test_committing_without_a_run_a_lock_or_a_prepared_cycle_is_refused(
     lock = store.acquire_cycle_lock(RUN_ID, cycle=1, invocation_id="inv", ttl_seconds=60)
     with pytest.raises(PersistenceError, match="has not been prepared"):
         store.commit_cycle(RUN_ID, cycle=1, token=lock.token, content_hash="x", version=0)
+
+
+# ------------------------------------------------------- analysis artifact routes
+
+
+def test_the_echo_and_contradiction_routes_answer(client: TestClient, store: SqliteRepository):
+    """The three artifact-backed routes the exhibition needs."""
+    assert client.get(f"/runs/{RUN_ID}/echoes").json()["data"]["total"] == 0
+    assert client.get(f"/runs/{RUN_ID}/contradictions").json()["data"]["total"] == 0
+    assert client.get(f"/runs/{RUN_ID}/question-scores").json()["data"] == []
+
+    store.store_analysis_artifact(
+        RUN_ID,
+        name="echoes",
+        payload={"items": [{"arm_id": "arm_fifo", "cycle": 1}, {"arm_id": "arm_lru", "cycle": 2}]},
+    )
+    store.store_analysis_artifact(
+        RUN_ID,
+        name="contradictions",
+        payload={"items": [{"cycle": 0, "arm_id": "arm_fifo"}, {"cycle": 12, "arm_id": "arm_lru"}]},
+    )
+    store.store_analysis_artifact(
+        RUN_ID, name="question_scores", payload={"items": [{"question_id": "q01"}]}
+    )
+
+    assert client.get(f"/runs/{RUN_ID}/echoes").json()["data"]["total"] == 2
+    narrowed = client.get(f"/runs/{RUN_ID}/echoes", params={"arm_id": "arm_fifo"}).json()
+    assert narrowed["data"]["total"] == 1
+    by_cycle = client.get(f"/runs/{RUN_ID}/contradictions", params={"cycle": 12}).json()
+    assert by_cycle["data"]["total"] == 1
+    assert client.get(f"/runs/{RUN_ID}/question-scores").json()["data"] == [{"question_id": "q01"}]
+
+
+def test_the_artifact_routes_refuse_an_unknown_run(client: TestClient):
+    for path in ("echoes", "contradictions", "question-scores", "divergence"):
+        assert client.get(f"/runs/nope/{path}").status_code == 404
+
+
+def test_a_cycle_with_no_snapshots_is_reported_as_absent(
+    seeded: PilotService, store: SqliteRepository
+):
+    """A run whose head is ahead of its snapshots is corrupt, and says so as a 404."""
+    seeded.run_next_cycle(RUN_ID)
+    store._connection.execute("UPDATE runs SET current_cycle = 2 WHERE run_id = ?", (RUN_ID,))
+    with TestClient(build_app(store)) as client:
+        assert client.get(f"/runs/{RUN_ID}/cycles/2").status_code == 404
+
+
+def test_an_arm_with_no_stored_state_is_absent(store: SqliteRepository, seeded: PilotService):
+    store._connection.execute(
+        "DELETE FROM arm_current_states WHERE run_id = ? AND arm_id = 'arm_fifo'", (RUN_ID,)
+    )
+    with TestClient(build_app(store)) as client:
+        assert client.get(f"/runs/{RUN_ID}/arms/arm_fifo").status_code == 404
+        assert len(client.get(f"/runs/{RUN_ID}/arms").json()["data"]) == 5
+    del seeded

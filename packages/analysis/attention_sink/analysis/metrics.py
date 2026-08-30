@@ -136,6 +136,13 @@ class QuestionScore(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     schema_version: Literal[1] = 1
+    arm_id: str = ""
+    """Which arm gave this answer. Set by the analysis service, which knows.
+
+    A score with no arm is a number nobody can attribute, and the exhibition would
+    have to guess which mind it belonged to."""
+
+    cycle: int = 0
     question_id: str = Field(min_length=1)
     fact_ids: tuple[str, ...]
     score: float = Field(ge=0.0, le=1.0)
@@ -230,6 +237,8 @@ def score_origin_recall(
 
         scores.append(
             QuestionScore(
+                arm_id=interview.arm_id.value,
+                cycle=interview.cycle,
                 question_id=question.question_id,
                 fact_ids=tuple(question.fact_ids),
                 score=score,

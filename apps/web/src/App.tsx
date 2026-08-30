@@ -1,33 +1,36 @@
-import { currentRuntimeMode, type RuntimeMode } from './runtime';
-
-interface AppProps {
-  /** Injected in tests; defaults to the build-time environment. */
-  mode?: RuntimeMode;
-}
-
 /**
- * The application shell.
+ * The route table.
  *
- * Deliberately empty of experiment views: nothing can be rendered honestly until
- * there is a run to render. What it does carry is the simulated-data banner, which
- * has to exist from the first commit so that no later view can be added without it.
+ * Seven routes, all read-only. There is no route that writes anything, because there
+ * is no API endpoint that would accept one: advancing the experiment is a command,
+ * not a link.
  */
-export function App({ mode = currentRuntimeMode() }: AppProps) {
-  const simulated = mode === 'local';
 
+import { Navigate, Route, Routes } from 'react-router-dom';
+
+import { Layout } from './components/Layout';
+import { Echoes } from './routes/Echoes';
+import { Graveyard } from './routes/Graveyard';
+import { Interviews } from './routes/Interviews';
+import { MemoryDetail } from './routes/MemoryDetail';
+import { Methodology } from './routes/Methodology';
+import { SixMinds } from './routes/SixMinds';
+import { Timeline } from './routes/Timeline';
+
+export function App() {
   return (
-    <main>
-      {simulated && (
-        <div role="status" data-testid="simulated-banner">
-          Simulated data. This client is running in local mode against fixtures; nothing shown here
-          is a result of the canonical experiment.
-        </div>
-      )}
-      <h1>Attention Sink</h1>
-      <p>
-        Six agents begin identical and diverge only in how they decide what to forget. No run has
-        been published yet.
-      </p>
-    </main>
+    <Routes>
+      <Route element={<Layout />}>
+        <Route index element={<SixMinds />} />
+        <Route path="cycle/:cycle" element={<SixMinds />} />
+        <Route path="graveyard" element={<Graveyard />} />
+        <Route path="echoes" element={<Echoes />} />
+        <Route path="memory/:memoryId" element={<MemoryDetail />} />
+        <Route path="timeline" element={<Timeline />} />
+        <Route path="interviews" element={<Interviews />} />
+        <Route path="methodology" element={<Methodology />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Route>
+    </Routes>
   );
 }

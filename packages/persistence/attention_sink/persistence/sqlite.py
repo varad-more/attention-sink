@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import secrets
 import sqlite3
+import threading
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
@@ -66,10 +67,17 @@ def _dumps(value: Any) -> str:
 class SqliteRepository:
     """A transactional local store for one pilot database.
 
-    Not thread-safe by construction: SQLite connections are not, and the pilot's
-    concurrency is inside a cycle rather than across them. The scheduler runs one
-    cycle at a time and the API is read-only, so a connection per repository is
-    enough and a pool would be a moving part with nothing to do.
+    **One connection per thread.** A ``sqlite3.Connection`` is not safe for concurrent
+    use, and ``check_same_thread=False`` only silences the check -- it does not make
+    the connection re-entrant. The read API serves synchronous endpoints from
+    Starlette's threadpool, so several requests really do arrive at once; sharing one
+    connection between them corrupts cursor state and raises
+    ``sqlite3.InterfaceError: bad parameter or other API misuse``, which is exactly
+    what happened the first time this ran under Playwright.
+
+    Concurrency *between* connections is SQLite's own problem and SQLite is good at
+    it: WAL mode lets readers proceed while a writer holds the write lock, and every
+    write here takes that lock explicitly with ``BEGIN IMMEDIATE``.
     """
 
     def __init__(self, path: Path | str = DEFAULT_DATABASE_PATH, *, clock: Any = _now) -> None:
@@ -78,16 +86,39 @@ class SqliteRepository:
         self.clock = clock
         if self.path.parent != Path():
             self.path.parent.mkdir(parents=True, exist_ok=True)
-        # ``check_same_thread=False`` because the read API serves sync endpoints from
-        # a threadpool. Safe here for one specific reason: every write goes through
-        # ``_transaction``, which takes SQLite's write lock with BEGIN IMMEDIATE, and
-        # the API never writes at all. A future adapter that wrote from several
-        # threads would need a connection per thread, not this flag.
-        self._connection = sqlite3.connect(self.path, isolation_level=None, check_same_thread=False)
-        self._connection.row_factory = sqlite3.Row
-        self._connection.execute("PRAGMA foreign_keys = ON")
-        self._connection.execute("PRAGMA journal_mode = WAL")
+        self._local = threading.local()
+        self._connections: list[sqlite3.Connection] = []
+        self._connections_lock = threading.Lock()
+        self._closed = False
         self.migrate()
+
+    def _connect(self) -> sqlite3.Connection:
+        """Open a connection for the calling thread and remember it for closing."""
+        connection = sqlite3.connect(self.path, isolation_level=None, check_same_thread=False)
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA foreign_keys = ON")
+        connection.execute("PRAGMA journal_mode = WAL")
+        connection.execute("PRAGMA busy_timeout = 5000")
+        with self._connections_lock:
+            self._connections.append(connection)
+        return connection
+
+    @property
+    def _connection(self) -> sqlite3.Connection:
+        """This thread's connection, opened on first use.
+
+        Raises:
+            PersistenceError: The store has been closed. Reopening silently would
+                let a caller keep reading a store somebody else decided was done.
+        """
+        if self._closed:
+            msg = f"the store at {self.path} is closed"
+            raise PersistenceError(msg)
+        existing: sqlite3.Connection | None = getattr(self._local, "connection", None)
+        if existing is None:
+            existing = self._connect()
+            self._local.connection = existing
+        return existing
 
     # ------------------------------------------------------------- lifecycle
 
@@ -101,8 +132,13 @@ class SqliteRepository:
         return current_version(self._connection)
 
     def close(self) -> None:
-        """Close the connection. Idempotent."""
-        self._connection.close()
+        """Close every connection this store opened. Idempotent."""
+        self._closed = True
+        with self._connections_lock:
+            connections, self._connections = self._connections, []
+        for connection in connections:
+            connection.close()
+        self._local = threading.local()
 
     def __enter__(self) -> Self:
         """Enter a context that closes the connection on the way out."""
@@ -783,6 +819,31 @@ class SqliteRepository:
             completed_cycles=tuple(json.loads(row["completed_cycles"])),
             updated_at=datetime.fromisoformat(row["updated_at"]),
         )
+
+    # ------------------------------------------------------ analysis artifacts
+
+    def store_analysis_artifact(
+        self, run_id: str, *, name: str, payload: Mapping[str, object]
+    ) -> None:
+        """Persist one derived analysis document under a stable name."""
+        now = self.clock().isoformat()
+        with self._transaction() as connection:
+            connection.execute(
+                "INSERT INTO analysis_artifacts (run_id, name, schema_version, payload,"
+                " created_at, updated_at) VALUES (?, ?, 1, ?, ?, ?)"
+                " ON CONFLICT(run_id, name) DO UPDATE SET payload = excluded.payload,"
+                " updated_at = excluded.updated_at",
+                (run_id, name, _dumps(dict(payload)), now, now),
+            )
+
+    def get_analysis_artifact(self, run_id: str, *, name: str) -> dict[str, Any] | None:
+        """The derived document stored under ``name``, or None."""
+        row = self._connection.execute(
+            "SELECT payload FROM analysis_artifacts WHERE run_id = ? AND name = ?",
+            (run_id, name),
+        ).fetchone()
+        loaded: dict[str, Any] | None = None if row is None else json.loads(row["payload"])
+        return loaded
 
     # ---------------------------------------------------------------- export
 

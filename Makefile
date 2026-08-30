@@ -10,7 +10,8 @@ SHELL := /bin/bash
 	pilot-validate pilot-calibrate pilot-local-validate pilot-draft \
 	pilot-local-cycle pilot-local-run pilot-local-export \
 	local-db-migrate local-run-create local-cycle local-scheduler local-api \
-	local-analyze local-export local-verify local-reset-demo local-all
+	local-analyze local-export local-verify local-reset-demo local-all \
+	pilot-local-demo pilot-local-web pilot-local-e2e pilot-local-build pilot-local-release-check
 
 UV ?= uv
 NPM ?= npm
@@ -143,6 +144,44 @@ local-all: ## The whole local pipeline, from an empty database to a verified exp
 	$(MAKE) local-db-migrate local-run-create
 	$(LOCAL) --database $(LOCAL_DB) --run-id $(LOCAL_RUN) cycle --count 24
 	$(MAKE) local-analyze local-export local-verify
+
+# ---------------------------------------------------------------------------
+# The local exhibition. One command from an empty checkout to a browsable
+# experiment. Everything below is fixture data and says so on every page.
+# ---------------------------------------------------------------------------
+WEB ?= npm run --workspace apps/web
+WEB_PORT ?= 5173
+
+pilot-local-demo: ## Whole product locally: database, run, API, and frontend
+	@echo "SIMULATED - LOCAL - NON-CANONICAL. Fixture models; not research results."
+	@test -f $(LOCAL_DB) || $(MAKE) local-db-migrate
+	@$(LOCAL) --database $(LOCAL_DB) --run-id $(LOCAL_RUN) status >/dev/null 2>&1 \
+		|| $(MAKE) local-run-create
+	@$(LOCAL) --database $(LOCAL_DB) --run-id $(LOCAL_RUN) cycle --count 24
+	@$(MAKE) local-analyze
+	@echo ""
+	@echo "  API      http://localhost:8000/runs/$(LOCAL_RUN)"
+	@echo "  Frontend http://localhost:$(WEB_PORT)"
+	@echo "  Data     LOCAL_FIXTURE / NON_CANONICAL / SIMULATED_MODEL_OUTPUTS"
+	@echo ""
+	@$(MAKE) -j2 local-api pilot-local-web
+
+pilot-local-web: ## Frontend dev server against the local API
+	$(WEB) dev -- --port $(WEB_PORT) --strictPort
+
+pilot-local-build: ## Production frontend build, plus a typecheck of it
+	$(WEB) typecheck
+	$(WEB) build
+
+pilot-local-e2e: ## Playwright flows against a freshly built local stack
+	$(WEB) e2e
+
+pilot-local-release-check: ## Everything a local release candidate has to pass
+	$(MAKE) verify
+	$(MAKE) local-all
+	$(MAKE) pilot-local-build
+	$(MAKE) pilot-local-e2e
+	@echo "local release check: all gates passed"
 
 test-contract: ## Opt-in contract tests against real Bedrock (costs money, needs credentials)
 	AS_BEDROCK_CONTRACT_TESTS=1 $(UV) run pytest tests/integration/test_bedrock_contract.py -m integration

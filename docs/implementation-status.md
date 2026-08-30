@@ -344,6 +344,57 @@ The 24-cycle SQLite run, executed end to end by `make local-all`:
   endpoints from a threadpool. Safe only because every write goes through one
   `BEGIN IMMEDIATE` transaction and the API never writes.
 
+## Phase 6 - the local exhibition and the release candidate
+
+Complete. Attention Sink now runs as a whole product locally: SQLite behind the
+application, fixture models, a local read API, and a React exhibition reading that
+API. Only AWS adapters and real-model execution remain.
+
+### Delivered
+
+- Validated frontend configuration (`VITE_API_BASE_URL`, `VITE_PUBLIC_RUN_ID`,
+  `VITE_DEPLOYMENT_MODE`, `VITE_POLL_INTERVAL_MS`, `VITE_FIXTURE_MODE`). A
+  production-like build with no API configuration refuses to start; every default
+  fails towards "this is simulated".
+- Seven routes: Six Minds (`/` and `/cycle/:cycle`), Graveyard, Graveyard Echo,
+  memory detail with lineage, Timeline, Interviews, Methodology.
+- The public names - Goldfish, Present-Minded, Pragmatist, Keeper of the First Day,
+  Gambler, Dreamer - exist in `apps/web/src/arms.ts` and nowhere else. Not in the
+  protocol, the database, any API response, or any prompt (ADR-004).
+- An accessible Timeline: SVG with a caption, a table carrying the same figures, a
+  keyboard-operable scrubber, and no claim that geometric distance shows causation.
+- Polling that stops when the tab is hidden, never overwrites a selected historical
+  cycle, caches immutable records, and says which command to run when the API is
+  unreachable. No WebSockets.
+- `packages/api` gained CORS for the local exhibition origins, and three routes the
+  frontend needs: `/echoes`, `/contradictions`, `/question-scores`, backed by a new
+  `analysis_artifacts` table (migration 2).
+- `make pilot-local-demo`, `pilot-local-build`, `pilot-local-e2e`, and
+  `pilot-local-release-check`.
+- 62 Playwright checks across desktop and mobile projects, covering the fourteen
+  named flows plus 24 accessibility assertions.
+- `docs/pilot/local-release-readiness.md` and
+  `docs/pilot/local-requirements-traceability.md`.
+
+### Two defects the suites found
+
+- **One SQLite connection shared across a threadpool.** Phase 5 opened the database
+  with `check_same_thread=False` and argued it was safe. It was not: the flag
+  silences the thread check but a connection is still not re-entrant, and the read
+  API serves synchronous endpoints from Starlette's threadpool. Under Playwright it
+  raised `sqlite3.InterfaceError`. Fixed with one connection per thread.
+- **Pages had no heading while loading or failing.** Every route returned its `h1`
+  only after data arrived, so a slow or failed load left no heading at all - worst
+  exactly when a reader most needs to know where they are.
+
+### Verified results
+
+`make pilot-local-release-check` from an empty checkout: 24 cycles, 144 snapshots, 18
+interviews, 171 model calls, 252 metrics, 116 Graveyard entries, 102 echo
+measurements, 180 contradiction classifications, a 17-file export whose checksums all
+verify, 16/16 verification checks, a 239.76 kB production build, and 62 passing
+browser flows.
+
 ### Test and coverage position
 
 - 790 tests: unit, Hypothesis property, and integration. 787 run; the three Bedrock
@@ -368,12 +419,11 @@ The 24-cycle SQLite run, executed end to end by `make local-all`:
   built. The engine is persistence-independent so that it can be, but this phase runs
   it locally only.
 
-## Phase 6 and later
+## Phases 7 and 8
 
-Not started: the React experiment views (Six Minds, Graveyard, Timeline, Interviews,
-Methodology), and everything AWS - DynamoDB and S3 adapters, Lambda handlers, API
+Not started, and the only things left: DynamoDB and S3 adapters, Lambda handlers, API
 Gateway, EventBridge Scheduler, CDK resources, deployment, real Bedrock validation,
-the canonical run, and public release.
+AWS token calibration, the canonical run, and public release.
 
 Deferred by ADR-local-first-pilot rather than unstarted: the event ledger (ADR-002)
 and Step Functions orchestration (ADR-003). Both remain accepted decisions whose

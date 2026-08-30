@@ -13,3 +13,6 @@ uv.lock
 # Generated knowledge-graph artifacts. Rebuilt by `/graphify`.
 graphify-out/
 .pilot-local/
+apps/web/test-results/
+apps/web/playwright-report/
+apps/web/dist/

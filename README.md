@@ -86,9 +86,13 @@ The whole application also runs persistently, on SQLite and a local HTTP server,
 no AWS credential:
 
 ```bash
-make local-all       # empty database to verified dataset export
-make local-api       # the read API on http://localhost:8000
+make local-all           # empty database to verified dataset export
+make pilot-local-demo    # the whole product: database, run, API, and exhibition
 ```
+
+The exhibition is a React client reading that API — Six Minds, the Graveyard, a
+Timeline, the checkpoint Interviews, and a Methodology page that states what the
+experiment cannot tell you. Every page is labelled `LOCAL SIMULATION`.
 
 See [docs/pilot-scope.md](docs/pilot-scope.md) for what the pilot narrows and why, and
 [docs/pilot/local-backend.md](docs/pilot/local-backend.md) for the persisted backend.
