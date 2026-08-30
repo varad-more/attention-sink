@@ -507,9 +507,15 @@ class PilotEngine:
             decay=self.configuration.heavy_hitter_citation_decay,
         )
         candidate_text = generation.writer.output.candidate_memory
+        # Claimed and recorded like any other call. Counting is free with one exact
+        # counter and a billed invocation with the other (ADR-013), and the ledger
+        # has to describe what was actually spent either way.
+        self.budget.spend(ModelRole.TOKEN_COUNTER, arm_id=arm_id.value)
+        counted = self.gateway.token_counter.count_detailed(candidate_text)
+        self.budget.record(counted.metadata)
         candidate = scored.mint(
             text=candidate_text,
-            token_count=self.gateway.token_counter.count(candidate_text),
+            token_count=counted.tokens,
             memory_kind=MemoryKind.GENERATED,
             cycle=cycle,
             source_stimulus_id=stimulus.stimulus_id,

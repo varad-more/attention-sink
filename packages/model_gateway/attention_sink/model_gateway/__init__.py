@@ -121,12 +121,15 @@ from attention_sink.model_gateway.settings import (
 )
 from attention_sink.model_gateway.tokens import (
     BEDROCK_COUNTER_VERSION,
+    CONVERSE_COUNTER_VERSION,
     ApproximateTokenCounter,
     BedrockTokenCounter,
+    ConverseTokenCounter,
 )
 
 __all__ = [
     "BEDROCK_COUNTER_VERSION",
+    "CONVERSE_COUNTER_VERSION",
     "DEFAULT_ACCEPTED_LEVELS",
     "DEFAULT_PROMPT_VERSION",
     "EVALUATION_CALCULATION_VERSION",
@@ -151,6 +154,7 @@ __all__ = [
     "ClaimEvaluator",
     "ClaimedCitation",
     "ConfigurationError",
+    "ConverseTokenCounter",
     "EmbeddingProvider",
     "EmbeddingRecord",
     "EmbeddingResult",

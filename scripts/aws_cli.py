@@ -42,10 +42,15 @@ from attention_sink.model_gateway import (
     ConfigurationError,
     GatewaySettings,
     ModelMode,
-    TokenCountSource,
 )
-from attention_sink.pilot.cli import model_specs
+from attention_sink.pilot.cli import (
+    counter_identity,
+    model_specs,
+    read_canonical_manifest,
+    require_canonical_launch,
+)
 from attention_sink.pilot.configuration import PilotRunConfiguration
+from attention_sink.pilot.protocol import ProtocolError
 from attention_sink.protocol import current_version
 
 __all__ = ["main"]
@@ -210,25 +215,35 @@ def _report(failures: Sequence[str]) -> int:
 
 
 def _command_bootstrap(args: argparse.Namespace) -> int:
-    """Create the staging run, from the locally validated protocol.
+    """Create the deployed run, from the validated protocol.
 
     Six identical seed states at cycle 0, real models recorded on the configuration,
-    and nothing generated. No fixture output is copied in: a staging run exists to
+    and nothing generated. No fixture output is copied in: a deployed run exists to
     find out what the real models do, and seeding it with fabrications would answer
     that question with the fixtures' answer.
+
+    A canonical run is checked twice more: the bundle must be frozen, and the
+    configuration must match the canonical manifest field by field. Both refusals
+    happen before the run exists.
     """
     runtime = _runtime()
     settings = runtime.settings
     if runtime.gateway.simulated:
         print(
-            "FAILED: this process has a fixture gateway; a staging run must record "
+            "FAILED: this process has a fixture gateway; a deployed run must record "
             "the models it actually used",
             file=sys.stderr,
         )
         return 1
 
-    configuration = _staging_configuration(runtime, run_id=args.run_id or settings.run_id)
-    configuration.require_run_kind_consistent()
+    try:
+        configuration = _deployed_configuration(runtime, run_id=args.run_id or settings.run_id)
+        configuration.require_run_kind_consistent()
+        if configuration.canonical:
+            require_canonical_launch(configuration, read_canonical_manifest(runtime.bundle.root))
+    except (ProtocolError, ValueError) as exc:
+        print(f"FAILED: {exc}", file=sys.stderr)
+        return 1
     service = runtime.service()
     try:
         service.create_run(run_id=configuration.run_id, configuration=configuration)
@@ -260,25 +275,12 @@ def _command_bootstrap(args: argparse.Namespace) -> int:
     return 0
 
 
-TOKEN_COUNT_SOURCE_NAMES: dict[TokenCountSource, str] = {
-    TokenCountSource.BEDROCK: "bedrock_count_tokens",
-    TokenCountSource.HEURISTIC: "approximate_heuristic",
-}
-"""What a run records about the counter its budget is denominated in.
-
-Read off the gateway that was actually built, not off the protocol's declared value.
-The protocol says ``local_fixture_heuristic``, which is true of a local run and would
-be misleading on a deployed one: the counter is the same, the run is not a fixture.
-Only ``bedrock_count_tokens`` is in ``EXACT_TOKEN_COUNT_SOURCES``, so a canonical run
-denominated in the other is refused whichever name it carries (ADR-012).
-"""
-
-
-def _staging_configuration(runtime: Runtime, *, run_id: str) -> PilotRunConfiguration:
-    """Resolve the configuration one staging run is defined by."""
+def _deployed_configuration(runtime: Runtime, *, run_id: str) -> PilotRunConfiguration:
+    """Resolve the configuration one deployed run is defined by."""
     bundle = runtime.bundle
     bundle.require_runnable(canonical=runtime.settings.canonical)
     writer, embedding = model_specs(runtime.gateway)
+    counter_version, token_count_source = counter_identity(runtime.gateway)
     version = current_version()
     return PilotRunConfiguration.from_bundle(
         bundle,
@@ -292,7 +294,8 @@ def _staging_configuration(runtime: Runtime, *, run_id: str) -> PilotRunConfigur
         app_version=version.app_version,
         git_commit=version.git_commit,
         run_kind=runtime.settings.run_kind,
-        token_count_source=TOKEN_COUNT_SOURCE_NAMES[runtime.gateway_settings.token_count_source],
+        counter_version=counter_version,
+        token_count_source=token_count_source,
     )
 
 

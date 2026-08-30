@@ -17,6 +17,8 @@ make us revisit it. Superseded records stay in place; they are not deleted.
 | [009](009-two-stage-compression.md)                                   | Compression is policy-planned and model-written, in two stages |
 | [010](010-opaque-memory-labels-in-prompts.md)                         | Models see memories under opaque per-request labels            |
 | [011](011-exact-token-counts-in-production.md)                        | Production budgets use the model's own token counts            |
+| [012](012-approximate-token-counts-in-staging.md)                     | A deployment may declare the approximate counter               |
+| [013](013-counting-by-invocation.md)                                  | The writer model counts its own input, through an invocation   |
 | [008-pilot](ADR-008-pilot-snapshot-architecture.md)                   | Pilot V1 runs one cycle engine over immutable snapshots        |
 | [local-first-pilot](ADR-local-first-pilot.md)                         | Complete the application locally before requiring AWS          |
 

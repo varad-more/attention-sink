@@ -399,12 +399,18 @@ def test_the_interview_asks_the_ten_fixed_questions_in_order(bundle: ProtocolBun
 # ------------------------------------------- protocol status and modification
 
 
-def test_the_committed_protocol_is_local_validated_and_not_frozen(bundle: ProtocolBundle):
+def test_the_committed_protocol_still_runs_locally_after_being_frozen(bundle: ProtocolBundle):
+    """Phase 4's acceptance was that a validated protocol runs a fixture pilot.
+
+    Phase 8 froze the same files. `is_local_validated` asks whether every document
+    may take part in a fixture run, which a frozen one may -- so this acceptance
+    still holds, and holds for a stricter document than the one it was written for.
+    """
     from attention_sink.pilot import ProtocolStatus
 
     assert bundle.is_local_validated
-    assert not bundle.is_frozen
-    assert bundle.protocol.status is ProtocolStatus.LOCAL_VALIDATED
+    assert bundle.is_frozen
+    assert bundle.protocol.status is ProtocolStatus.FROZEN
 
 
 def test_editing_a_validated_protocol_is_detected(tmp_path: Path):
@@ -469,6 +475,11 @@ def test_the_export_marks_the_run_non_canonical(local_run: LocalRun, tmp_path: P
 
 
 def test_a_local_run_cannot_be_relabelled_canonical(bundle: ProtocolBundle):
-    """The protocol is not frozen, so a canonical run is refused before it starts."""
-    with pytest.raises(ProtocolError, match="not frozen"):
+    """The protocol is frozen now, so the refusal comes from the gateway instead.
+
+    A fixture gateway fabricates its generations, and a canonical run may not be
+    denominated in the heuristic counter that gateway builds. Both are checked by
+    `require_run_kind_consistent`, before a cycle can spend anything.
+    """
+    with pytest.raises(ValueError, match="simulated|approximation"):
         build_run(bundle, run_id="run_nope", run_kind=RunKind.AWS_CANONICAL)

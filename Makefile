@@ -8,6 +8,7 @@ SHELL := /bin/bash
 .PHONY: help bootstrap format lint typecheck test test-unit test-property \
 	test-integration test-contract test-web synth dev verify clean simulate \
 	pilot-validate pilot-calibrate pilot-local-validate pilot-draft \
+	pilot-aws-calibrate pilot-aws-validate pilot-freeze \
 	pilot-local-cycle pilot-local-run pilot-local-export \
 	local-db-migrate local-run-create local-cycle local-scheduler local-api \
 	local-analyze local-export local-verify local-reset-demo local-all \
@@ -96,6 +97,18 @@ pilot-local-validate: ## Digest the protocol, mark it LOCAL_VALIDATED, and write
 
 pilot-draft: ## Return the protocol to DRAFT so it can be edited
 	$(PILOT) draft
+
+pilot-aws-calibrate: ## Derive the canonical budget from the writer model's own tokeniser
+	ALLOW_BEDROCK_CALLS=1 $(BEDROCK_ENV) \
+		$(UV) run python scripts/calibrate_aws_budget.py
+
+pilot-aws-validate: ## Mark the calibrated protocol AWS_CALIBRATED and write both manifests
+	$(MODEL_ENV) MODEL_MODE=bedrock \
+		$(UV) run python scripts/freeze_canonical_protocol.py --status aws_calibrated
+
+pilot-freeze: ## Freeze the calibrated protocol and write the canonical run manifest
+	$(MODEL_ENV) MODEL_MODE=bedrock \
+		$(UV) run python scripts/freeze_canonical_protocol.py --status frozen
 
 pilot-local-cycle: ## Run one fixture cycle across all six arms
 	$(UV) run python scripts/run_local_fixture_cycle.py
@@ -225,7 +238,38 @@ AWS_ENV ?= staging
 CDK ?= npx cdk
 CDK_DIR ?= infrastructure/cdk
 STACK ?= AttentionSink-$(AWS_ENV)
-OPERATOR ?= $(UV) run python scripts/aws_cli.py
+
+# The model set every AWS command uses, in one place so a deployment and the process
+# it deploys cannot disagree about which models a run used (ADR-006). Nova Micro is
+# the cheapest text model this account can reach; Titan V2 is the embedding model the
+# analysis needs. Every one is overridable from the environment, and every one is
+# recorded verbatim in the run manifest -- two runs that used different values here
+# are different experiments.
+AWS_REGION ?= us-east-1
+WRITER_MODEL_ID ?= amazon.nova-micro-v1:0
+AUDITOR_MODEL_ID ?= amazon.nova-micro-v1:0
+JUDGE_MODEL_ID ?= amazon.nova-micro-v1:0
+SUMMARY_MODEL_ID ?= amazon.nova-micro-v1:0
+EMBEDDING_MODEL_ID ?= amazon.titan-embed-text-v2:0
+# `converse` counts by invoking the writer model with its output capped at one token.
+# Exact, and valid for a canonical run; see ADR-013 for why `bedrock` is unusable here.
+TOKEN_COUNT_SOURCE ?= converse
+
+# The commit a run records as the code that produced it. Resolved here rather than
+# inside the application: a process cannot be trusted to know which checkout it was
+# started from, and a wrong commit in a manifest is worse than none.
+AS_GIT_COMMIT ?= $(shell git rev-parse HEAD 2>/dev/null)
+
+MODEL_ENV = AWS_REGION=$(AWS_REGION) WRITER_MODEL_ID=$(WRITER_MODEL_ID) \
+	AUDITOR_MODEL_ID=$(AUDITOR_MODEL_ID) JUDGE_MODEL_ID=$(JUDGE_MODEL_ID) \
+	SUMMARY_MODEL_ID=$(SUMMARY_MODEL_ID) EMBEDDING_MODEL_ID=$(EMBEDDING_MODEL_ID) \
+	TOKEN_COUNT_SOURCE=$(TOKEN_COUNT_SOURCE) AS_GIT_COMMIT=$(AS_GIT_COMMIT)
+
+# What a process that really invokes a model needs on top of the model set. Never a
+# default: a command that spends money says so on its own command line.
+BEDROCK_ENV = $(MODEL_ENV) MODEL_MODE=bedrock AS_RUNTIME_MODE=production
+
+OPERATOR ?= $(BEDROCK_ENV) $(UV) run python scripts/aws_cli.py
 
 aws-bundle: ## Build the deployable Python package, with dependencies vendored
 	$(UV) run python scripts/build_lambda_bundle.py
@@ -243,11 +287,11 @@ aws-bootstrap-cdk: ## Bootstrap CDK in this account and Region (once per account
 # URL and the API answers the exhibition's origin, and neither exists until the stack
 # does. Pass one creates them; pass two supplies each to the other.
 aws-deploy: aws-preflight aws-bundle ## Deploy, rebuild the exhibition against the API, deploy again
-	cd $(CDK_DIR) && $(CDK) deploy $(STACK) -c environment=$(AWS_ENV) --require-approval any-change
+	cd $(CDK_DIR) && $(MODEL_ENV) $(CDK) deploy $(STACK) -c environment=$(AWS_ENV) --require-approval any-change
 	@$(MAKE) aws-web-build
 	AS_ALLOWED_ORIGINS=$$(aws cloudformation describe-stacks --stack-name $(STACK) \
 		--query "Stacks[0].Outputs[?OutputKey=='CloudFrontUrl'].OutputValue" --output text) \
-		bash -c 'cd $(CDK_DIR) && $(CDK) deploy $(STACK) -c environment=$(AWS_ENV) \
+		bash -c 'cd $(CDK_DIR) && $(MODEL_ENV) $(CDK) deploy $(STACK) -c environment=$(AWS_ENV) \
 		--require-approval any-change'
 	@$(MAKE) aws-outputs
 
@@ -299,7 +343,7 @@ aws-export: ## Write the complete dataset to the export bucket
 	$(OPERATOR) export
 
 aws-smoke: ## Real Bedrock smoke tests. Costs money. Needs ALLOW_BEDROCK_CALLS=1.
-	ALLOW_BEDROCK_CALLS=1 $(UV) run pytest tests/smoke -m smoke -v
+	ALLOW_BEDROCK_CALLS=1 $(BEDROCK_ENV) $(UV) run pytest tests/smoke -m smoke -v
 
 aws-destroy: ## Tear the stack down. Refuses production, which retains its data.
 	@test "$(AWS_ENV)" != "production" || (echo "refusing to destroy production" && exit 1)

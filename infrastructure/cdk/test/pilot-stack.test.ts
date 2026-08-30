@@ -489,7 +489,7 @@ describe('outputs', () => {
 });
 
 describe('the token counter', () => {
-  function withCounter(source?: 'bedrock' | 'heuristic'): Template {
+  function withCounter(source?: 'bedrock' | 'converse' | 'heuristic'): Template {
     const stack = new PilotStack(new App(), `Test-counter-${source ?? 'default'}`, {
       env: { account: '000000000000', region: 'us-east-1' },
       config: environmentConfig('staging'),
@@ -514,5 +514,71 @@ describe('the token counter', () => {
     }
     const outputs = template.toJSON().Outputs as Record<string, { Value: string }>;
     expect(outputs.TokenCountSource?.Value).toBe('heuristic');
+  });
+
+  it('carries the counter a canonical run uses, which is neither of the other two', () => {
+    // ADR-013: CountTokens supports no model this account can reach, so the exact
+    // count comes from an invocation capped at one output token instead.
+    const template = withCounter('converse');
+    for (const fn of Object.values(ourFunctions(template))) {
+      expect(fn.Properties.Environment.Variables.TOKEN_COUNT_SOURCE).toBe('converse');
+    }
+    const outputs = template.toJSON().Outputs as Record<string, { Value: string }>;
+    expect(outputs.TokenCountSource?.Value).toBe('converse');
+  });
+});
+
+describe('the commit a run records', () => {
+  function withCommit(gitCommit?: string): Template {
+    const stack = new PilotStack(new App(), `Test-commit-${gitCommit ?? 'none'}`, {
+      env: { account: '000000000000', region: 'us-east-1' },
+      config: environmentConfig('production'),
+      models: MODELS,
+      ...(gitCommit ? { gitCommit } : {}),
+    });
+    return Template.fromStack(stack);
+  }
+
+  it('reaches every function, so a run names the code that produced it', () => {
+    const commit = 'd5e740530600089500abc903a7c6211aac42f904';
+    for (const fn of Object.values(ourFunctions(withCommit(commit)))) {
+      expect(fn.Properties.Environment.Variables.AS_GIT_COMMIT).toBe(commit);
+    }
+  });
+
+  it('is absent rather than invented when the deployment does not know one', () => {
+    for (const fn of Object.values(ourFunctions(withCommit()))) {
+      expect(fn.Properties.Environment.Variables).not.toHaveProperty('AS_GIT_COMMIT');
+    }
+  });
+});
+
+describe('the production deployment', () => {
+  it('keeps its data when the stack goes away', () => {
+    const template = synthesise('production');
+    template.hasResource('AWS::DynamoDB::Table', {
+      DeletionPolicy: 'Retain',
+      UpdateReplacePolicy: 'Retain',
+      Properties: { DeletionProtectionEnabled: true },
+    });
+  });
+
+  it('imposes no cycle ceiling of its own, leaving the protocol to define the run', () => {
+    for (const fn of Object.values(ourFunctions(synthesise('production')))) {
+      expect(fn.Properties.Environment.Variables).not.toHaveProperty('AS_MAX_CYCLES');
+    }
+  });
+
+  it('deploys inert: neither the function nor the schedule may act', () => {
+    const template = synthesise('production');
+    for (const fn of Object.values(ourFunctions(template))) {
+      expect(fn.Properties.Environment.Variables.AS_EXECUTION_ENABLED).toBe('false');
+    }
+    template.hasResourceProperties('AWS::Scheduler::Schedule', { State: 'DISABLED' });
+  });
+
+  it('serves the canonical run identifier and no other', () => {
+    const outputs = synthesise('production').toJSON().Outputs as Record<string, { Value: string }>;
+    expect(outputs.PilotRunId?.Value).toBe('run_aws_canonical');
   });
 });

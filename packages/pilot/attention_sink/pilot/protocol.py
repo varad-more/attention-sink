@@ -38,6 +38,8 @@ from attention_sink.domain import ArmId, UtcTimestamp, Version, content_hash
 from attention_sink.pilot.canonical import canonical_digest
 
 __all__ = [
+    "CANONICAL_MANIFEST_DIGEST_PATH",
+    "CANONICAL_MANIFEST_PATH",
     "DEFAULT_PROTOCOL_ROOT",
     "DOCUMENT_PATHS",
     "EXPECTED_SEED_COUNT",
@@ -71,6 +73,7 @@ __all__ = [
     "read_document",
     "read_manifest",
     "return_to_draft",
+    "rewrite_block",
     "rewrite_scalars",
     "write_manifest",
 ]
@@ -89,6 +92,18 @@ _QUESTION_ID = r"^[a-z][a-z0-9_]{0,63}$"
 FactId = Annotated[str, StringConstraints(pattern=_FACT_ID)]
 SeedId = Annotated[str, StringConstraints(pattern=_SEED_ID)]
 Text = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)]
+
+
+EXACT_TOKEN_COUNT_SOURCES: frozenset[str] = frozenset(
+    {"bedrock_count_tokens", "bedrock_converse_usage"}
+)
+"""Counters whose numbers are the writer model's own tokenisation.
+
+Both reach the same tokeniser: one through the provider's ``CountTokens`` operation,
+the other through an invocation capped at a single output token (ADR-013). Anything
+else is an approximation, and a canonical run may not be denominated in one -- which
+is enforced twice, at protocol freeze and again at run creation.
+"""
 
 
 class ProtocolError(ValueError):
@@ -511,6 +526,14 @@ class ModelCallLimits(BaseModel):
 
     writer_calls_per_cycle: int = Field(ge=0)
     summary_calls_per_cycle: int = Field(ge=0)
+    token_count_calls_per_cycle: int = Field(ge=0)
+    """Counting operations one cycle may perform, one per arm's candidate memory.
+
+    A ceiling on counting matters because counting is not always free: the exact
+    counter this deployment declares reaches the model's tokeniser through a billed
+    invocation (ADR-013), so a run that counted in a loop would spend real money
+    without ever calling a writer."""
+
     evaluator_calls_per_cycle: int = Field(ge=0)
     interview_calls_per_cycle: int = Field(ge=0)
     interview_calls_per_checkpoint: int = Field(ge=0)
@@ -536,6 +559,26 @@ class PilotProtocol(_Document):
 
     Recorded rather than inferred, so a manifest never leaves a reader guessing
     whether a budget came from the local heuristic or from Bedrock ``CountTokens``."""
+
+    calibration_writer_model_id: str | None = Field(default=None, min_length=1, max_length=200)
+    """The model whose tokeniser produced the budget, as it was invoked.
+
+    Null until AWS calibration. A budget is denominated in one model's tokens, so a
+    protocol that named the budget without naming the model would leave the unit
+    undefined (ADR-011)."""
+
+    calibration_region: str | None = Field(default=None, min_length=1, max_length=64)
+    """Where that model was invoked. Recorded because a provider may tokenise
+    differently in different Regions, and because a reproduction needs to know."""
+
+    calibrated_at: UtcTimestamp | None = None
+    """When the budget was derived. Null until AWS calibration."""
+
+    calibration_input_hashes: dict[str, str] = Field(default_factory=dict)
+    """Digest of each file the calibration measured, at the moment it measured it.
+
+    A budget derived from a seed world that has since changed is a budget for a
+    different experiment. These digests are what a reader checks that against."""
 
     writer_prompt_version: Version
     summary_prompt_version: Version
@@ -566,6 +609,24 @@ class PilotProtocol(_Document):
     def is_calibrated(self) -> bool:
         """Whether the active-memory budget has been fixed against a counter."""
         return self.memory_budget_tokens is not None
+
+    @property
+    def is_exactly_calibrated(self) -> bool:
+        """Whether the budget was derived against a model's own tokeniser.
+
+        Freezing checks this rather than :attr:`is_calibrated`. A protocol calibrated
+        locally has a budget of the right shape and the wrong unit, and freezing one
+        would make the canonical experiment a measurement of the local heuristic
+        (ADR-011, ADR-013).
+        """
+        return (
+            self.is_calibrated
+            and self.token_count_source in EXACT_TOKEN_COUNT_SOURCES
+            and self.calibration_writer_model_id is not None
+            and self.calibration_region is not None
+            and self.calibrated_at is not None
+            and bool(self.calibration_input_hashes)
+        )
 
 
 # --------------------------------------------------------------------- loading
@@ -718,6 +779,17 @@ DOCUMENT_PATHS: tuple[str, ...] = (
 """The five machine-readable files, in :attr:`ProtocolBundle.documents` order."""
 
 MANIFEST_PATH = "manifest.json"
+
+CANONICAL_MANIFEST_PATH = "canonical-run-manifest.json"
+"""The frozen protocol's complete definition, written once at freeze.
+
+Separate from :data:`MANIFEST_PATH`, which records digests and is rewritten at
+every validation. This one records the whole experiment -- models, inference
+settings, policy parameters, metric versions, the commit -- and exists so a run
+can be checked against it before it is allowed to start."""
+
+CANONICAL_MANIFEST_DIGEST_PATH = "canonical-run-manifest.sha256"
+"""The canonical manifest's digest, beside it, in ``sha256sum`` format."""
 """Where the digest of every protocol file is recorded, beside the files themselves."""
 
 PREDICTIONS_PATH = "predictions.md"
@@ -879,6 +951,33 @@ def rewrite_scalars(path: Path, fields: Mapping[str, str]) -> None:
     path.write_text("".join(lines), encoding="utf-8")
 
 
+def rewrite_block(path: Path, key: str, entries: Mapping[str, str]) -> None:
+    """Replace one top-level block mapping in a YAML file, in place.
+
+    :func:`rewrite_scalars` handles a field whose value is one line. This handles the
+    one field whose value is a nested mapping, by replacing the key line and every
+    indented line that follows it. Written as a block rather than a flow mapping
+    because the repository formats YAML with Prettier, and a flow mapping of digests
+    is far past the print width -- Prettier would split it across lines that this
+    function would then have to parse back.
+
+    Raises:
+        ProtocolError: ``key`` does not appear at the top level of the file.
+    """
+    lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+    start = next((i for i, line in enumerate(lines) if line.startswith(f"{key}:")), None)
+    if start is None:
+        msg = f"{path} has no top-level {key} field to write"
+        raise ProtocolError(msg)
+    end = start + 1
+    while end < len(lines) and (lines[end].startswith((" ", "\t")) and lines[end].strip()):
+        end += 1
+    rendered = [f"{key}:\n", *(f"  {name}: '{value}'\n" for name, value in sorted(entries.items()))]
+    if not entries:
+        rendered = [f"{key}: {{}}\n"]
+    path.write_text("".join([*lines[:start], *rendered, *lines[end:]]), encoding="utf-8")
+
+
 def promote_documents(
     bundle: ProtocolBundle, status: ProtocolStatus = ProtocolStatus.LOCAL_VALIDATED
 ) -> tuple[str, ...]:
@@ -888,26 +987,36 @@ def promote_documents(
     change, so a validated file's recorded digest matches what a later verification
     recomputes. Files already at ``status`` and undrifted are left alone.
 
+    ``LOCAL_VALIDATED`` needs only a calibrated budget, of any unit. The two statuses
+    beyond it need the budget to have been derived against a model's own tokeniser,
+    because they are what a canonical run is allowed to launch from: a protocol frozen
+    around a local approximation would make the canonical experiment a measurement of
+    the local heuristic (ADR-011, ADR-013).
+
     Returns:
         The paths that were rewritten.
 
     Raises:
-        ProtocolError: The protocol or the seed world has not been calibrated, or
-            ``status`` is one this phase must not write.
+        ProtocolError: The protocol or the seed world has not been calibrated, the
+            budget was not derived against an exact counter, or ``status`` is one no
+            document can be promoted to.
     """
     if status not in _LOCAL_RUNNABLE_STATUSES:
         msg = f"{status.value} is not a status a document can be promoted to"
-        raise ProtocolError(msg)
-    if status is not ProtocolStatus.LOCAL_VALIDATED:
-        msg = (
-            f"refusing to write status {status.value}: a pilot protocol advances past "
-            f"local validation only at AWS token calibration in Phase 8"
-        )
         raise ProtocolError(msg)
     if not bundle.protocol.is_calibrated or not bundle.seed_world.is_calibrated:
         msg = (
             "refusing to validate an uncalibrated protocol: the active-memory budget "
             "is still unset. Run `make pilot-calibrate` first."
+        )
+        raise ProtocolError(msg)
+    if status is not ProtocolStatus.LOCAL_VALIDATED and not bundle.protocol.is_exactly_calibrated:
+        msg = (
+            f"refusing to write status {status.value}: the budget of "
+            f"{bundle.protocol.memory_budget_tokens} tokens is denominated in "
+            f"{bundle.protocol.token_count_source!r}, which is not one of "
+            f"{', '.join(sorted(EXACT_TOKEN_COUNT_SOURCES))}, or its calibration "
+            f"provenance is incomplete. Run `make pilot-aws-calibrate` first."
         )
         raise ProtocolError(msg)
 

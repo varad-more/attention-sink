@@ -49,12 +49,17 @@ from attention_sink.model_gateway.schemas import SupportLevel
 from attention_sink.model_gateway.settings import (
     ConfigurationError,
     GatewaySettings,
+    ModelConfig,
     ModelMode,
     RuntimeMode,
     RuntimeSettings,
     TokenCountSource,
 )
-from attention_sink.model_gateway.tokens import ApproximateTokenCounter, BedrockTokenCounter
+from attention_sink.model_gateway.tokens import (
+    ApproximateTokenCounter,
+    BedrockTokenCounter,
+    ConverseTokenCounter,
+)
 
 __all__ = ["ModelGateway", "build_gateway"]
 
@@ -178,23 +183,10 @@ def build_gateway(
         simulated=False,
         accepted_levels=accepted_levels,
         prompt_version=prompt_version,
-        # Chosen from configuration, never fallen back to. See ADR-012: a Region
-        # with no model supporting CountTokens is a reason to declare the
-        # approximate counter in the manifest, not a reason to use it quietly.
-        token_counter=(
-            BedrockTokenCounter(
-                model_id=configured.writer_model_id,
-                region=configured.region,
-                client=runtime_client,
-                retrier=retrier(),
-            )
-            if settings.token_count_source is TokenCountSource.BEDROCK
-            else ApproximateTokenCounter(
-                model_id=configured.writer_model_id,
-                region=configured.region,
-                simulated=False,
-            )
-        ),
+        # Chosen from configuration, never fallen back to. See ADR-012 and ADR-013:
+        # a Region with no model supporting CountTokens is a reason to declare a
+        # different counter in the manifest, not a reason to change unit quietly.
+        token_counter=_token_counter(settings, configured, runtime_client, retrier),
         embeddings=BedrockEmbeddingProvider(
             model_id=configured.embedding_model_id,
             region=configured.region,
@@ -202,6 +194,35 @@ def build_gateway(
             dimensions=embedding_dimensions,
             retrier=retrier(),
         ),
+    )
+
+
+def _token_counter(
+    settings: GatewaySettings,
+    configured: ModelConfig,
+    client: BedrockRuntimeApi,
+    retrier: Callable[[], Retrier],
+) -> ExactTokenCounter:
+    """Build the counter this deployment declared, and only that one.
+
+    Three counters, one declaration, no fallback. Which one is built decides the unit
+    the whole run's budget is denominated in, so it is read from configuration that
+    was recorded before the run started rather than discovered when a call fails.
+    """
+    if settings.token_count_source is TokenCountSource.HEURISTIC:
+        return ApproximateTokenCounter(
+            model_id=configured.writer_model_id, region=configured.region, simulated=False
+        )
+    counter = (
+        ConverseTokenCounter
+        if settings.token_count_source is TokenCountSource.CONVERSE
+        else BedrockTokenCounter
+    )
+    return counter(
+        model_id=configured.writer_model_id,
+        region=configured.region,
+        client=client,
+        retrier=retrier(),
     )
 
 

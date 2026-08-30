@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from attention_sink.model_gateway import ModelGateway
-from attention_sink.pilot.cli import model_specs
+from attention_sink.pilot.cli import counter_identity, model_specs
 from attention_sink.pilot.configuration import PilotRunConfiguration, RunKind
 from attention_sink.pilot.protocol import ProtocolBundle
 from attention_sink.protocol import current_version
@@ -49,6 +49,7 @@ def build_configuration(
     """
     bundle.require_runnable(canonical=run_kind.is_canonical)
     writer, embedding = model_specs(gateway)
+    counter_version, token_count_source = counter_identity(gateway)
     version = current_version()
     return PilotRunConfiguration.from_bundle(
         bundle,
@@ -60,4 +61,6 @@ def build_configuration(
         app_version=version.app_version,
         git_commit=version.git_commit,
         run_kind=run_kind,
+        counter_version=counter_version,
+        token_count_source=token_count_source,
     )

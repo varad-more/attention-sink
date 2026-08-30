@@ -6,6 +6,13 @@ resolves that for production: a real run counts with the tokeniser of the model 
 will read the text, and the heuristic counter remains only where a test needs a
 number without a network.
 
+Two counters satisfy that. :class:`BedrockTokenCounter` asks the provider's
+``CountTokens`` operation. :class:`ConverseTokenCounter` asks the model itself,
+through a ``Converse`` request capped at one output token, and reads the exact input
+total the provider reports back. Both are the writer model's own tokenisation of the
+exact text; they differ in which operation reports it, and the second exists because
+no model this deployment can reach supports the first (ADR-013).
+
 There is no fallback. A production process whose counter is unavailable stops. Silent
 degradation to an approximation would leave every arm in that run measured against a
 budget in a different unit from the one its manifest claims, and nothing downstream
@@ -20,10 +27,10 @@ other is a silent change of unit nobody would see.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from time import monotonic
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from attention_sink.domain import HeuristicTokenCounter, content_hash
 from attention_sink.model_gateway.failures import (
@@ -41,9 +48,27 @@ from attention_sink.model_gateway.observability import (
 )
 
 if TYPE_CHECKING:  # pragma: no cover - imports exist for typing only
-    from mypy_boto3_bedrock_runtime.type_defs import CountTokensInputTypeDef, MessageTypeDef
+    from mypy_boto3_bedrock_runtime.type_defs import (
+        CountTokensInputTypeDef,
+        InferenceConfigurationTypeDef,
+        MessageTypeDef,
+    )
 
-__all__ = ["BEDROCK_COUNTER_VERSION", "ApproximateTokenCounter", "BedrockTokenCounter"]
+__all__ = [
+    "BEDROCK_COUNTER_VERSION",
+    "CONVERSE_COUNTER_VERSION",
+    "ApproximateTokenCounter",
+    "BedrockTokenCounter",
+    "ConverseTokenCounter",
+]
+
+CONVERSE_COUNTER_VERSION = "bedrock-converse-usage-v1"
+"""Counter version recorded on every ``TokenBudget`` counted by :class:`ConverseTokenCounter`.
+
+Distinct from :data:`BEDROCK_COUNTER_VERSION` because the two are distinct
+measurements even when they agree: they ask different operations, and a run
+denominated in one must be legible as such next to a run denominated in the other.
+"""
 
 BEDROCK_COUNTER_VERSION = "bedrock-count-tokens-v1"
 """Counter version recorded on every ``TokenBudget`` counted this way.
@@ -75,6 +100,9 @@ class BedrockTokenCounter:
     version: str = BEDROCK_COUNTER_VERSION
     _cache: dict[tuple[str, str], int] = field(default_factory=dict, repr=False)
 
+    output_tokens_per_call: ClassVar[int] = 0
+    """What one count costs in generated tokens. ``CountTokens`` generates nothing."""
+
     @property
     def descriptor(self) -> str:
         """Counter version and model identifier, as one readable string."""
@@ -105,10 +133,7 @@ class BedrockTokenCounter:
         """
         if not text.strip():
             return TokenCount(tokens=0, metadata=self._metadata(CallOutcome.SUCCESS, 0, 0, 0))
-        return self._count(
-            key=text,
-            payload={"converse": {"messages": [_user_turn(text)]}},
-        )
+        return self._count(key=text, system=None, user=text)
 
     def count_request(self, *, system: str, user: str) -> TokenCount:
         """Count a complete two-turn request exactly as it will be sent.
@@ -119,23 +144,37 @@ class BedrockTokenCounter:
         Raises:
             ModelInvocationError: Every permitted attempt failed.
         """
-        return self._count(
-            key=f"{system}\n\n{user}",
-            payload={"converse": {"messages": [_user_turn(user)], "system": [{"text": system}]}},
-        )
+        return self._count(key=f"{system}\n\n{user}", system=system, user=user)
 
-    def _count(self, *, key: str, payload: CountTokensInputTypeDef) -> TokenCount:
+    def _invoke(self, *, system: str | None, user: str) -> Mapping[str, Any]:
+        """Ask the provider what this request costs, and return its raw answer."""
+        messages: list[MessageTypeDef] = [_user_turn(user)]
+        payload: CountTokensInputTypeDef = (
+            {"converse": {"messages": messages, "system": [{"text": system}]}}
+            if system is not None
+            else {"converse": {"messages": messages}}
+        )
+        return self.client.count_tokens(modelId=self.model_id, input=payload)
+
+    @staticmethod
+    def _input_tokens_of(response: Mapping[str, Any]) -> int:
+        """Read the input total out of one provider answer."""
+        return int(response["inputTokens"])
+
+    def _count(self, *, key: str, system: str | None, user: str) -> TokenCount:
         cache_key = (self.model_id, content_hash(key))
         cached = self._cache.get(cache_key)
         if cached is not None:
-            return TokenCount(
-                tokens=cached, metadata=self._metadata(CallOutcome.SUCCESS, 0, 0, cached)
-            )
+            # The count is the cached one; the *cost* is zero, because no request was
+            # made. A run's token tally adds these up, and a cache hit that reported
+            # the tokens it did not spend would make the tally describe a bill nobody
+            # was sent.
+            return TokenCount(tokens=cached, metadata=self._metadata(CallOutcome.SUCCESS, 0, 0, 0))
 
         started = self.clock()
 
         def attempt(_index: int, _hint: str | None) -> Any:
-            return self.client.count_tokens(modelId=self.model_id, input=payload)
+            return self._invoke(system=system, user=user)
 
         try:
             response, retries = self.retrier.run(attempt)
@@ -150,7 +189,7 @@ class BedrockTokenCounter:
             msg = f"token count failed as {exc.code.value} using {self.model_id}"
             raise ModelInvocationError(msg, metadata=metadata) from exc
 
-        tokens = int(response["inputTokens"])
+        tokens = self._input_tokens_of(response)
         self._cache[cache_key] = tokens
         return TokenCount(
             tokens=tokens,
@@ -185,13 +224,58 @@ class BedrockTokenCounter:
             retry_count=retry_count,
             simulated=False,
             input_tokens=input_tokens,
+            output_tokens=self.output_tokens_per_call if input_tokens else 0,
             request_id=request_id,
             error_code=error_code,
         )
 
 
+@dataclass
+class ConverseTokenCounter(BedrockTokenCounter):
+    """Counts by asking the model, when the provider will not answer separately.
+
+    ``CountTokens`` is the operation built for this, and no model this deployment can
+    reach supports it -- every one answers ``ValidationException: The provided model
+    doesn't support counting tokens``. A ``Converse`` request capped at a single
+    output token gets the same number by a different route: the provider reports
+    ``usage.inputTokens`` for every invocation, and that total is the writer model's
+    own tokenisation of exactly the text it was given.
+
+    This is an exact counter, not an approximation, and that is the whole point of it
+    (ADR-013). It differs from :class:`BedrockTokenCounter` in cost rather than in
+    kind: a count is a billed invocation, so counting calls are claimed against the
+    run's model-call ceiling like any other call.
+    """
+
+    version: str = CONVERSE_COUNTER_VERSION
+
+    output_tokens_per_call: ClassVar[int] = 1
+    """One. The cap cannot be zero, so every count generates a single token."""
+
+    def _invoke(self, *, system: str | None, user: str) -> Mapping[str, Any]:
+        """Invoke the model with the output capped as low as the provider allows."""
+        inference: InferenceConfigurationTypeDef = {"maxTokens": 1, "temperature": 0.0}
+        if system is None:
+            return self.client.converse(
+                modelId=self.model_id,
+                messages=[_user_turn(user)],
+                inferenceConfig=inference,
+            )
+        return self.client.converse(
+            modelId=self.model_id,
+            messages=[_user_turn(user)],
+            system=[{"text": system}],
+            inferenceConfig=inference,
+        )
+
+    @staticmethod
+    def _input_tokens_of(response: Mapping[str, Any]) -> int:
+        """Read the input total off the invocation's usage report."""
+        return int(response["usage"]["inputTokens"])
+
+
 def _user_turn(text: str) -> MessageTypeDef:
-    """One user message in the shape CountTokens expects."""
+    """One user message in the shape both counting operations expect."""
     return {"role": "user", "content": [{"text": text}]}
 
 

@@ -11,6 +11,7 @@ from attention_sink.pilot.protocol import ModelCallLimits
 LIMITS = ModelCallLimits(
     writer_calls_per_cycle=6,
     summary_calls_per_cycle=2,
+    token_count_calls_per_cycle=6,
     evaluator_calls_per_cycle=0,
     interview_calls_per_cycle=0,
     interview_calls_per_checkpoint=6,
@@ -62,13 +63,22 @@ def test_a_normal_cycle_may_not_evaluate_or_interview(budget: ModelCallBudget, r
         budget.spend(role)
 
 
-@pytest.mark.parametrize("role", [ModelRole.EMBEDDING, ModelRole.TOKEN_COUNTER])
+@pytest.mark.parametrize("role", [ModelRole.EMBEDDING, ModelRole.AUDITOR])
 def test_a_role_this_protocol_never_declares_has_no_allowance(
     budget: ModelCallBudget, role: ModelRole
 ):
     assert budget.allowance(role) == 0
     with pytest.raises(ModelCallBudgetExceeded):
         budget.spend(role)
+
+
+def test_counting_is_a_call_this_cycle_may_run_out_of(budget: ModelCallBudget):
+    """The exact counter can be a billed invocation, so counting has a ceiling."""
+    assert budget.allowance(ModelRole.TOKEN_COUNTER) == 6
+    for _ in range(6):
+        budget.spend(ModelRole.TOKEN_COUNTER)
+    with pytest.raises(ModelCallBudgetExceeded, match="6 token_counter call"):
+        budget.spend(ModelRole.TOKEN_COUNTER)
 
 
 def test_a_checkpoint_may_interview_every_arm(budget: ModelCallBudget):

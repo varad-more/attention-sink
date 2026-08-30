@@ -10,13 +10,13 @@
 schema_version: 1
 protocol_version: pilot-v1
 stimulus_deck_version: station-kestrel-pilot-v1
-status: local_validated
+status: frozen
 title: Station Kestrel stimulus deck
 description: >-
   Twenty-four ordered events across five phases: orientation, distractor flood,
   contradiction pressure, recovery cues, identity stress, and one autobiography.
 created_at: '2026-08-29T00:00:00Z'
-content_hash: 'sha256:96ffbfa838d2284ce9843b4f6fbc2a23292b35fc683e2050a8db2eb58e666224'
+content_hash: 'sha256:b98486d35825ec570d24494f5427a518b4d66c3459d760df120a17c191270376'
 
 stimuli:
   # ------------------------------------------------ cycles 1-5: orientation

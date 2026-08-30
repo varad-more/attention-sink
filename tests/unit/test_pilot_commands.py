@@ -9,7 +9,11 @@ from pathlib import Path
 import pytest
 
 from attention_sink.domain import HeuristicTokenCounter
-from attention_sink.model_gateway import GatewaySettings, build_gateway
+from attention_sink.model_gateway import (
+    CONVERSE_COUNTER_VERSION,
+    GatewaySettings,
+    build_gateway,
+)
 from attention_sink.pilot import (
     ProtocolError,
     ProtocolStatus,
@@ -245,9 +249,9 @@ def test_a_retired_protocol_is_reported_as_not_runnable(
 def test_the_run_command_can_be_told_it_is_canonical_and_refuses(
     capsys: pytest.CaptureFixture[str],
 ):
-    """A canonical run needs a frozen protocol, which this phase never produces."""
+    """A canonical run needs real models, which this command never builds."""
     assert main(["--root", str(PILOT_ROOT), "run", "--cycles", "1", "--run-kind", "aws_canonical"])
-    assert "not frozen" in capsys.readouterr().err
+    assert "simulated" in capsys.readouterr().err
 
 
 def test_a_seed_the_counter_cannot_measure_is_refused(draft: Path):
@@ -267,13 +271,22 @@ def test_the_gateway_the_commands_build_is_a_fixture_gateway():
 
 
 def test_the_committed_protocol_is_exactly_what_calibration_would_write():
-    """A drifted committed protocol would make every run in the repo unreproducible."""
+    """A drifted committed protocol would make every run in the repo unreproducible.
+
+    The counts themselves are the writer model's and cannot be recomputed without a
+    credential, so what is checked here is everything about them that does not need
+    one: that the budget follows from the recorded counts by the declared rule, and
+    that the file says which counter produced them.
+    """
     bundle = load_bundle(PILOT_ROOT)
-    counter = HeuristicTokenCounter()
+    protocol = bundle.protocol
     for seed in bundle.seed_world.memories:
-        assert seed.provisional_token_count == counter.count(seed.text)
-    assert bundle.protocol.memory_budget_tokens == proposed_budget(bundle.seed_world.total_tokens)
-    assert read_document(PILOT_ROOT / "protocol.yaml")["status"] == "local_validated"
+        assert seed.provisional_token_count is not None
+        assert seed.provisional_token_count > 0
+    assert protocol.memory_budget_tokens == proposed_budget(bundle.seed_world.total_tokens)
+    assert protocol.counter_version == CONVERSE_COUNTER_VERSION
+    assert protocol.token_count_source == "bedrock_converse_usage"  # noqa: S105
+    assert read_document(PILOT_ROOT / "protocol.yaml")["status"] == "frozen"
 
 
 # -------------------------------------------------------------------- manifest

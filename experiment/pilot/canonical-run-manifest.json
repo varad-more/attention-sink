@@ -1,0 +1,203 @@
+{
+  "analysis": {
+    "evaluation_calculation_version": "eval-calc-v1",
+    "graveyard_echo_threshold": 0.08,
+    "identity_question_ids": [
+      "q01",
+      "q02",
+      "q03",
+      "q08",
+      "q10"
+    ],
+    "metric_version": "metric-v1"
+  },
+  "application": {
+    "app_version": "0.1.0",
+    "git_commit": "d5e740530600089500abc903a7c6211aac42f904"
+  },
+  "budget": {
+    "calibrated_at": "2026-08-30T12:45:48.754853+00:00",
+    "calibration_input_hashes": {
+      "seed_memories.yaml": "sha256:a40a5dca419fc72a09969e83bb8554f817e4eb12b764080fa2c9d7b3b5a764e0",
+      "stimuli.yaml": "sha256:148b336536ed543231dc6efccd1106fa55d25f49b7f9793254518952170299e0"
+    },
+    "calibration_region": "us-east-1",
+    "calibration_writer_model_id": "amazon.nova-micro-v1:0",
+    "counter_version": "bedrock-converse-usage-v1",
+    "memory_budget_tokens": 208,
+    "token_count_source": "bedrock_converse_usage"
+  },
+  "content_hash": "sha256:12e28c02488e0eb9e82373305670b86791e6c53d1e2186caded08fcb750e053c",
+  "inference": {
+    "max_model_retries": 3,
+    "request_timeout_seconds": 60,
+    "summary_max_tokens": 256,
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "writer_max_tokens": 1024
+  },
+  "interview": {
+    "questions": 10,
+    "version": "pilot-v1"
+  },
+  "models": {
+    "auditor_model_id": "amazon.nova-micro-v1:0",
+    "embedding_model_id": "amazon.titan-embed-text-v2:0",
+    "evaluator_model_id": "amazon.nova-micro-v1:0",
+    "interview_model_id": "amazon.nova-micro-v1:0",
+    "region": "us-east-1",
+    "summary_model_id": "amazon.nova-micro-v1:0",
+    "writer_model_id": "amazon.nova-micro-v1:0"
+  },
+  "policies": {
+    "dreamer": {
+      "fallback_rule": "fifo",
+      "min_sources": 2,
+      "safety_margin_tokens": 8,
+      "target_summary_tokens": 24,
+      "version": "summary-v1"
+    },
+    "fifo": {
+      "version": "fifo-v1"
+    },
+    "heavy_hitter": {
+      "citation_decay": 0.9,
+      "recency_reserve": 2,
+      "version": "heavy-v1"
+    },
+    "lru": {
+      "version": "lru-v1"
+    },
+    "pinned_origin": {
+      "pinned_memory_id": "mem_arm_sink_000000",
+      "pinned_seed_memory_id": "seed_01",
+      "version": "sink-v1"
+    },
+    "seeded_random": {
+      "random_seed": "kestrel-pilot-v1-9f2c41a7",
+      "version": "random-v1"
+    }
+  },
+  "prompts": {
+    "hashes": {
+      "citation-auditor/v1": "sha256:49b0ec80cf038f09fe40a39824e979ec09e4379c2564ec36132ef587058514b0",
+      "interview/v1": "sha256:ae32b71c3e4aef5185ad2f5884c92a1519eab3bae46a7b39df95e522496b09a5",
+      "prompt_set": "sha256:741a27e46422f22364d97e4ac7b76fb430c5686926e6784461a443416d421144",
+      "summarizer/v1": "sha256:5dffbba1fe970803adf8b4fb0d848168787b0ab2627e0b42217f39692830463e",
+      "summary-entailment/v1": "sha256:8e857655566f88678cc0175b5a41e481fecd5156ad11c96e6a20bf227e0dd3be",
+      "truth-evaluator/v1": "sha256:86906d3cc8eaf1eae164613d87f5aec20b2f1e3a94f7fa4724063ba774aba6c5",
+      "writer/v1": "sha256:fac3f188c701f87dfeb00c85ed68472758282ce99603939532032edd9b064c31"
+    },
+    "summary_prompt_version": "v1",
+    "writer_prompt_version": "v1"
+  },
+  "protocol": {
+    "counter_version": "bedrock-converse-usage-v1",
+    "description": "Six arms, identical seed memories and stimuli, one fixed active-memory budget, and exactly one difference between them: the mechanism that decides what to forget.",
+    "files": {
+      "interview_questions.yaml": "sha256:9e98fb3cf3dae7340ae54a267696d2584d481ebbdf7bbaa1ef51c3738ddf207b",
+      "predictions.md": "sha256:ce5ae2ae41636c7e5624f6e7f571dac258ecf5469a0425c6c512c1a848bfb360",
+      "protocol.yaml": "sha256:6f1f98bb5528cb6a65d16b871308156a1fb84ce99ce1c79feaae29aca5b2c7f8",
+      "seed_memories.yaml": "sha256:ff4fedac9d7cd3bb4cf98d3b30e121497ee9e2595eea38c21ba77afea770cca9",
+      "stimuli.yaml": "sha256:b98486d35825ec570d24494f5427a518b4d66c3459d760df120a17c191270376",
+      "truth_ledger.yaml": "sha256:d402324b6bf092c9c39a8da131ce807c2509e9952f02387ac44ee236c0991f77"
+    },
+    "memory_budget_tokens": 208,
+    "prompt_hashes": {
+      "citation-auditor/v1": "sha256:49b0ec80cf038f09fe40a39824e979ec09e4379c2564ec36132ef587058514b0",
+      "interview/v1": "sha256:ae32b71c3e4aef5185ad2f5884c92a1519eab3bae46a7b39df95e522496b09a5",
+      "prompt_set": "sha256:741a27e46422f22364d97e4ac7b76fb430c5686926e6784461a443416d421144",
+      "summarizer/v1": "sha256:5dffbba1fe970803adf8b4fb0d848168787b0ab2627e0b42217f39692830463e",
+      "summary-entailment/v1": "sha256:8e857655566f88678cc0175b5a41e481fecd5156ad11c96e6a20bf227e0dd3be",
+      "truth-evaluator/v1": "sha256:86906d3cc8eaf1eae164613d87f5aec20b2f1e3a94f7fa4724063ba774aba6c5",
+      "writer/v1": "sha256:fac3f188c701f87dfeb00c85ed68472758282ce99603939532032edd9b064c31"
+    },
+    "protocol_version": "pilot-v1",
+    "schema_version": 1,
+    "status": "frozen",
+    "title": "Attention Sink pilot - Station Kestrel",
+    "token_count_source": "bedrock_converse_usage"
+  },
+  "run_shape": {
+    "arms": [
+      "arm_fifo",
+      "arm_lru",
+      "arm_heavy",
+      "arm_sink",
+      "arm_random",
+      "arm_summary"
+    ],
+    "checkpoint_cycles": [
+      0,
+      12,
+      24
+    ],
+    "maximum_cycles": 24
+  },
+  "schema_version": 1,
+  "seed_world": {
+    "content_hashes": {
+      "seed_01": "sha256:6232b51391d3d3d465002c8f811bd8b37b8668630675199af1ed6cdf93f51ce1",
+      "seed_02": "sha256:a1f1d4bfde472ed6238b69baeb2ccc37d214e2e8aa2127a4773ef61410d7a5eb",
+      "seed_03": "sha256:426a203705bcebacb7213a6654b663fed382c098d407eade5143496c4ab7412c",
+      "seed_04": "sha256:74926100851b6266d4ebc5c522e620106c5b5fcc7a5eb51a868e92d6600729a4",
+      "seed_05": "sha256:2a1553331a30ccd4ec38e95836c317ffab7e0df799821a59bd150684f06f740c",
+      "seed_06": "sha256:61483d5c9413cb50df2ce4dded4fef33561cfd08dd8c93e89916f15f93f1cdad",
+      "seed_07": "sha256:82ef1e7d595c83a108cc85ef4120750c169f1c5a0be6fea52268ab5ddbf65a3e",
+      "seed_08": "sha256:78be1b1e484e809a78e2e469ebd70b91b4bf96e207fc23a0df9e16bff845bd9c",
+      "seed_09": "sha256:0d6ac5f18e794beaa105080731e4afea3daed02a5ed338beed022af62f282f3f",
+      "seed_10": "sha256:00653ef2857c4e4725971e2710c4cb16b2e16a456621aa0c9dbc63b3135d8e51",
+      "seed_11": "sha256:6556b7e6cdf29860ab33e4c5487e82ee2e192164c9c621d9987efaa88f5ac697",
+      "seed_12": "sha256:82d73050e9acd7fa475e9b80b73fc5aeb0b30b40db3d9dca158e8fc91e3b3e3a"
+    },
+    "memories": 12,
+    "version": "station-kestrel-pilot-v1"
+  },
+  "spending": {
+    "citation_mode": "claimed_validated",
+    "max_parallel_model_calls": 3,
+    "model_call_limits": {
+      "evaluator_calls_per_cycle": 0,
+      "interview_calls_per_checkpoint": 6,
+      "interview_calls_per_cycle": 0,
+      "max_model_calls_per_run": 600,
+      "summary_calls_per_cycle": 2,
+      "token_count_calls_per_cycle": 6,
+      "writer_calls_per_cycle": 6
+    }
+  },
+  "stimuli": {
+    "content_hashes": {
+      "stim_001": "sha256:24c86c0b7d1740cf7ac58a6e0af0378d61c4fec5487bcd2aa163ee508bf33398",
+      "stim_002": "sha256:f592edaf07376379475457d3f4131fa636dd920823451392d0094059a5622c2d",
+      "stim_003": "sha256:dc5fedbaeb156b485280a9a5995d24f6b03334b890432f098d0e89f4ce84c532",
+      "stim_004": "sha256:a42b0c056a5b2536951b901bff906474c43dc9ce5c0f5042e22a921d95c1a422",
+      "stim_005": "sha256:bd0bf18ffb1a660fd18405733d828506e2aa6c3bae31d7925122212c7f682b0d",
+      "stim_006": "sha256:b55ada4eade7de7d652a5e88c1be86698e660dc2e3b442d0126cb1df6d5735f4",
+      "stim_007": "sha256:69ddf6215bc92d9c321ec58bd189ebb0a8a7f2e20ba62f2433c857f4d5e44f01",
+      "stim_008": "sha256:31f3714cf222307479dfa70fbb39285ceb0cb5f02a7b69f0a29345412c330df8",
+      "stim_009": "sha256:09dca5b993087d4cc63dde145b6ae4eb11fb654020019a24f648f3f4fe26591e",
+      "stim_010": "sha256:f9cca1f1f509c1b8dbee62f7245767879952f02374679a7e98ee8611a6576e3c",
+      "stim_011": "sha256:32cd79d058edd54796eabb33f00eaade4a72ec0c262f00a56944c27186a89f01",
+      "stim_012": "sha256:f6d29d8a8cfa92291a91be1c9adb6f86419d2edd2094048002815fa094ccb46c",
+      "stim_013": "sha256:7b50740730f281bc139bcf77897ebb13e29704c581f24c4a3f23b48e3ada0265",
+      "stim_014": "sha256:e5922f5b6883460b45998b0bd5bfea5de9f8b654c49bbfbe834f3f434754dedd",
+      "stim_015": "sha256:cd57c3e83643c70bec6f0f08aae9c6cecb6a90e8047e18b87f197479c831e2a3",
+      "stim_016": "sha256:4a5cdfcdecb8ebce0531da19dd9450e4ffe2b24456b6b4f0856dc6aa2da374e7",
+      "stim_017": "sha256:1d258ed8244422796f027eb2cf37231e885a662425e82a617d56af2d82dd31b1",
+      "stim_018": "sha256:309fec7fae3e7d2ea18c6cfc95ce60f87aadfea9b366642e260d2a5af58c9db0",
+      "stim_019": "sha256:1fabd9e16e5e9b85e8c669c8e1d33c4157c4e6df465d30a71ef67b77bd72198e",
+      "stim_020": "sha256:590ee4a21bac01e120b2b6b96aba2889226e9497464812d141f9791a9ccf5f78",
+      "stim_021": "sha256:5d323541481c3a3bc25a2447da1da7cc1a3a4a75d49b1cdc95f57a0d6cbae6dd",
+      "stim_022": "sha256:fa210a4626dc373889541032317b85448424850f5affbe1d7bba20c098b88583",
+      "stim_023": "sha256:d58a0bb3278b91235b180e48498bdcfb4cfc4b5742079a8f446212a334187fa1",
+      "stim_024": "sha256:64297d33c9cd9cced8d0b89e263d144b5b12652f35f9af4d6067f6f4858dd293"
+    },
+    "count": 24,
+    "version": "station-kestrel-pilot-v1"
+  },
+  "truth_ledger": {
+    "facts": 12,
+    "version": "station-kestrel-pilot-v1"
+  }
+}

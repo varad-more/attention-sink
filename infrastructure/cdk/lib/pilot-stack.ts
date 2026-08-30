@@ -57,10 +57,19 @@ export interface PilotStackProps extends StackProps {
    *
    * Declared at deploy time rather than compiled in, and recorded in the template,
    * because it is an experimental parameter: a run counted one way is not comparable
-   * with a run counted the other. `bedrock` is the default and the only value a
-   * canonical run may use (ADR-011, amended by ADR-012).
+   * with a run counted another. `bedrock` and `converse` are the two exact counters
+   * and the only values a canonical run may use; `heuristic` is an approximation a
+   * deployment may declare and a canonical run may not (ADR-011, ADR-012, ADR-013).
    */
-  readonly tokenCountSource?: 'bedrock' | 'heuristic';
+  readonly tokenCountSource?: 'bedrock' | 'converse' | 'heuristic';
+  /**
+   * The git commit this bundle was built from.
+   *
+   * Recorded on every function so that a run's manifest names the code that produced
+   * it. Optional: a deployment from a checkout with no git history is a legitimate
+   * state, and recording nothing is better than recording something invented.
+   */
+  readonly gitCommit?: string;
   /**
    * Browser origins the read API answers, on top of the environment's own list.
    *
@@ -102,6 +111,7 @@ export class PilotStack extends Stack {
     super(scope, id, props);
     const { config, models } = props;
     const tokenCountSource = props.tokenCountSource ?? 'bedrock';
+    const gitCommit = props.gitCommit?.trim() ?? '';
 
     // The exhibition and the API are on different origins, so a browser discards an
     // otherwise-successful response without a matching CORS header. Never a wildcard:
@@ -176,6 +186,11 @@ export class PilotStack extends Stack {
       // to let any page on the internet read a run.
       AS_ALLOWED_ORIGINS: allowedOrigins.join(','),
       AS_RUNTIME_MODE: config.name === 'local' ? 'local' : 'production',
+      // The commit the bundle was built from, so a run records the code that
+      // produced it and not only the version number that code claims. Empty when
+      // the deployment could not resolve one, which reads as null in a manifest
+      // rather than as a commit nobody can look up.
+      ...(gitCommit ? { AS_GIT_COMMIT: gitCommit } : {}),
       // Both off. The stack deploys inert and an operator arms it.
       AS_EXECUTION_ENABLED: String(config.executionEnabled),
       ALLOW_BEDROCK_CALLS: String(config.allowBedrockCalls),

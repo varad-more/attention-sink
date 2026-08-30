@@ -19,13 +19,19 @@ testable without a subprocess.
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import math
 import sys
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
+from attention_sink.domain import ArmId, make_memory_id
 from attention_sink.model_gateway import (
+    BEDROCK_COUNTER_VERSION,
+    CONVERSE_COUNTER_VERSION,
     FIXTURE_MODEL_ID,
     FIXTURE_REGION,
     ExactTokenCounter,
@@ -33,13 +39,17 @@ from attention_sink.model_gateway import (
     ModelGateway,
     build_gateway,
 )
+from attention_sink.pilot.canonical import canonical_digest
 from attention_sink.pilot.configuration import ModelSpec, PilotRunConfiguration, RunKind
 from attention_sink.pilot.engine import CheckpointRecord, PilotEngine
 from attention_sink.pilot.export import export_run
 from attention_sink.pilot.protocol import (
+    CANONICAL_MANIFEST_DIGEST_PATH,
+    CANONICAL_MANIFEST_PATH,
     DEFAULT_PROTOCOL_ROOT,
     ProtocolBundle,
     ProtocolError,
+    build_manifest,
     load_bundle,
     manifest_drift,
     promote_documents,
@@ -53,11 +63,17 @@ from attention_sink.protocol import current_version
 __all__ = [
     "BUDGET_HEADROOM_RATIO",
     "BUDGET_ROUNDING",
+    "build_canonical_manifest",
     "build_run",
     "calibrate",
+    "canonical_launch_mismatches",
+    "counter_identity",
     "main",
     "model_specs",
     "proposed_budget",
+    "read_canonical_manifest",
+    "require_canonical_launch",
+    "write_canonical_manifest",
 ]
 
 BUDGET_HEADROOM_RATIO = 1.5
@@ -119,7 +135,9 @@ def _rewrite_nested(path: Path, *, anchor: str, values: Mapping[str, Mapping[str
     path.write_text("".join(lines), encoding="utf-8")
 
 
-def calibrate(bundle: ProtocolBundle, counter: ExactTokenCounter) -> tuple[int, int]:
+def calibrate(
+    bundle: ProtocolBundle, counter: ExactTokenCounter, *, token_count_source: str | None = None
+) -> tuple[int, int]:
     """Fill in every derived protocol field, and fix the budget.
 
     Counts each seed memory with the counter the run will be measured by, writes those
@@ -164,14 +182,44 @@ def calibrate(bundle: ProtocolBundle, counter: ExactTokenCounter) -> tuple[int, 
     total = sum(counts.values())
     budget = proposed_budget(total)
     rewrite_scalars(root / bundle.paths[1], {"counter_version": counter.version})
+    # The source travels with the version because the version alone cannot tell a
+    # reader whether `heuristic-v1` was a fixture run's only option or a deployment's
+    # declared choice, and a protocol that named the wrong one would be the single
+    # field nobody could check.
     rewrite_scalars(
         root / bundle.paths[0],
-        {"memory_budget_tokens": str(budget), "counter_version": counter.version},
+        {"memory_budget_tokens": str(budget), "counter_version": counter.version}
+        | ({} if token_count_source is None else {"token_count_source": token_count_source}),
     )
     return total, budget
 
 
 # --------------------------------------------------------------------- wiring
+
+
+COUNTER_SOURCE_NAMES: dict[str, str] = {
+    BEDROCK_COUNTER_VERSION: "bedrock_count_tokens",
+    CONVERSE_COUNTER_VERSION: "bedrock_converse_usage",
+}
+"""What a run records about each exact counter, keyed by the counter's own version.
+
+Only these two names are in :data:`EXACT_TOKEN_COUNT_SOURCES`. The approximate counter
+is not listed because its recorded name depends on the run rather than the counter:
+the same heuristic is a fixture's only option locally and a declared choice on AWS.
+"""
+
+
+def counter_identity(gateway: ModelGateway) -> tuple[str, str]:
+    """The counter version and source name the built gateway actually counts with.
+
+    Read off the gateway for the same reason :func:`model_specs` is: a protocol
+    declares what a canonical run should use, and a run has to record what it did use.
+    A frozen protocol run locally against fixture models is the case that makes the
+    difference visible.
+    """
+    version = str(gateway.token_counter.version)
+    approximate = "local_fixture_heuristic" if gateway.simulated else "approximate_heuristic"
+    return version, COUNTER_SOURCE_NAMES.get(version, approximate)
 
 
 def model_specs(gateway: ModelGateway) -> tuple[ModelSpec, ModelSpec]:
@@ -218,6 +266,7 @@ def build_run(
     bundle.require_runnable(canonical=run_kind.is_canonical)
     resolved = gateway if gateway is not None else build_gateway(GatewaySettings.from_env())
     writer, embedding = model_specs(resolved)
+    counter_version, token_count_source = counter_identity(resolved)
     version = current_version()
     configuration = PilotRunConfiguration.from_bundle(
         bundle,
@@ -229,6 +278,8 @@ def build_run(
         app_version=version.app_version,
         git_commit=version.git_commit,
         run_kind=run_kind,
+        counter_version=counter_version,
+        token_count_source=token_count_source,
     )
     engine = PilotEngine(configuration=configuration, bundle=bundle, gateway=resolved)
     engine.initialize_pilot_run()
@@ -316,7 +367,8 @@ def _prompt_hashes(bundle: ProtocolBundle) -> dict[str, str]:
 def _command_calibrate(args: argparse.Namespace) -> int:
     bundle = _load(args)
     gateway = build_gateway(GatewaySettings.from_env())
-    total, budget = calibrate(bundle, gateway.token_counter)
+    _, source = counter_identity(gateway)
+    total, budget = calibrate(bundle, gateway.token_counter, token_count_source=source)
     print(f"counter:      {gateway.token_counter.version}")
     print(f"seed tokens:  {total}")
     print(f"budget:       {budget}  ({BUDGET_HEADROOM_RATIO}x, rounded to {BUDGET_ROUNDING})")
@@ -412,13 +464,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Run one pilot command.
 
     Returns:
-        A process exit status. Protocol failures return 1 with a message on stderr
-        rather than a traceback: a draft protocol is an ordinary state, not a crash.
+        A process exit status. A protocol failure or a refused run configuration
+        returns 1 with a message on stderr rather than a traceback: a draft protocol,
+        and an operator asking a fixture gateway for a canonical run, are both
+        ordinary states rather than crashes.
     """
     args = _parser().parse_args(argv)
     try:
         exit_status: int = args.handler(args)
-    except ProtocolError as exc:
+    except (ProtocolError, ValueError) as exc:
         print(f"FAILED: {exc}", file=sys.stderr)
         return 1
     return exit_status
@@ -426,3 +480,333 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 if __name__ == "__main__":  # pragma: no cover - process entry point
     raise SystemExit(main())
+
+
+# ------------------------------------------------------- the canonical manifest
+
+
+def build_canonical_manifest(
+    bundle: ProtocolBundle,
+    *,
+    prompt_hashes: Mapping[str, str],
+    settings: GatewaySettings,
+    analysis: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Everything the frozen protocol defines, in one document.
+
+    The protocol manifest records digests, and answers "have these files changed".
+    This one records the experiment, and answers "is the run about to start the one
+    that was frozen": the models, the inference settings, every policy parameter, the
+    metric versions, the commit. A launch check compares a proposed run configuration
+    against it field by field, so anything absent here is something a run could
+    change without being refused.
+
+    ``analysis`` carries the metric constants. They are passed in rather than
+    imported because the pilot may not import the analysis package -- see the import
+    boundary test -- and a manifest that omitted them would let a metric definition
+    change under a frozen protocol.
+    """
+    protocol = bundle.protocol
+    policies = protocol.policies
+    models = settings.models
+    inference = settings.inference
+    pinned_seed = policies.pinned_origin.pinned_seed_memory_id
+    position = next(
+        memory.initial_position
+        for memory in bundle.seed_world.memories
+        if memory.memory_id == pinned_seed
+    )
+    version = current_version()
+    return {
+        "schema_version": 1,
+        "protocol": build_manifest(bundle, prompt_hashes=prompt_hashes),
+        "seed_world": {
+            "version": str(protocol.seed_world_version),
+            "memories": len(bundle.seed_world.memories),
+            "content_hashes": {
+                memory.memory_id: memory.expected_content_hash
+                for memory in bundle.seed_world.memories
+            },
+        },
+        "stimuli": {
+            "version": str(protocol.stimulus_deck_version),
+            "count": len(bundle.stimulus_deck.stimuli),
+            "content_hashes": {
+                stimulus.stimulus_id: stimulus.expected_content_hash
+                for stimulus in bundle.stimulus_deck.stimuli
+            },
+        },
+        "truth_ledger": {
+            "version": str(protocol.truth_ledger_version),
+            "facts": len(bundle.truth_ledger.facts),
+        },
+        "interview": {
+            "version": str(protocol.interview_version),
+            "questions": len(bundle.interview.questions),
+        },
+        "run_shape": {
+            "maximum_cycles": protocol.maximum_cycles,
+            "checkpoint_cycles": list(protocol.checkpoint_cycles),
+            "arms": [arm.value for arm in protocol.arms],
+        },
+        "budget": {
+            "memory_budget_tokens": protocol.memory_budget_tokens,
+            "counter_version": str(protocol.counter_version),
+            "token_count_source": protocol.token_count_source,
+            "calibration_writer_model_id": protocol.calibration_writer_model_id,
+            "calibration_region": protocol.calibration_region,
+            "calibrated_at": (
+                None if protocol.calibrated_at is None else protocol.calibrated_at.isoformat()
+            ),
+            "calibration_input_hashes": dict(sorted(protocol.calibration_input_hashes.items())),
+        },
+        "models": {
+            "region": None if models is None else models.region,
+            "writer_model_id": None if models is None else models.writer_model_id,
+            "auditor_model_id": None if models is None else models.auditor_model_id,
+            "summary_model_id": None if models is None else models.summary_model_id,
+            # The interview is the same agent answering questions, so it is the
+            # writer's model. Recorded separately anyway: a reader should not have to
+            # know that rule to know which model answered.
+            "interview_model_id": None if models is None else models.writer_model_id,
+            "evaluator_model_id": None if models is None else models.judge_model_id,
+            "embedding_model_id": None if models is None else models.embedding_model_id,
+        },
+        "inference": {
+            "temperature": inference.temperature,
+            "top_p": inference.top_p,
+            "writer_max_tokens": inference.writer_max_tokens,
+            "summary_max_tokens": inference.summary_max_tokens,
+            "max_model_retries": settings.max_model_retries,
+            "request_timeout_seconds": settings.request_timeout_seconds,
+        },
+        "prompts": {
+            "writer_prompt_version": str(protocol.writer_prompt_version),
+            "summary_prompt_version": str(protocol.summary_prompt_version),
+            "hashes": dict(sorted(prompt_hashes.items())),
+        },
+        "policies": {
+            "fifo": {"version": str(policies.fifo.version)},
+            "lru": {"version": str(policies.lru.version)},
+            "heavy_hitter": {
+                "version": str(policies.heavy_hitter.version),
+                "citation_decay": policies.heavy_hitter.citation_decay,
+                "recency_reserve": policies.heavy_hitter.recency_reserve,
+            },
+            "pinned_origin": {
+                "version": str(policies.pinned_origin.version),
+                "pinned_seed_memory_id": pinned_seed,
+                "pinned_memory_id": make_memory_id(ArmId.ARM_SINK, position - 1),
+            },
+            "seeded_random": {
+                "version": str(policies.seeded_random.version),
+                "random_seed": policies.seeded_random.random_seed,
+            },
+            "dreamer": {
+                "version": str(policies.dreamer.version),
+                "target_summary_tokens": policies.dreamer.target_summary_tokens,
+                "safety_margin_tokens": policies.dreamer.safety_margin_tokens,
+                "min_sources": policies.dreamer.min_sources,
+                "fallback_rule": policies.dreamer.fallback_rule,
+            },
+        },
+        "spending": {
+            "citation_mode": protocol.citation_mode.value,
+            "model_call_limits": protocol.model_call_limits.model_dump(mode="json"),
+            "max_parallel_model_calls": protocol.max_parallel_model_calls,
+        },
+        "analysis": dict(sorted(analysis.items())),
+        "application": {
+            "app_version": version.app_version,
+            "git_commit": version.git_commit,
+        },
+    }
+
+
+def write_canonical_manifest(
+    bundle: ProtocolBundle,
+    *,
+    prompt_hashes: Mapping[str, str],
+    settings: GatewaySettings,
+    analysis: Mapping[str, Any],
+) -> tuple[Path, Path, str]:
+    """Write the canonical manifest and its digest beside the protocol.
+
+    The digest is written to its own file in ``sha256sum`` format so that verifying
+    it needs no code from this repository. A reader who does not trust the tooling
+    can check the freeze with one shell command.
+
+    Returns:
+        The manifest path, the digest path, and the digest.
+    """
+    manifest = build_canonical_manifest(
+        bundle, prompt_hashes=prompt_hashes, settings=settings, analysis=analysis
+    )
+    manifest["content_hash"] = canonical_digest(manifest)
+    rendered = json.dumps(manifest, indent=2, sort_keys=True) + "\n"
+    path = bundle.root / CANONICAL_MANIFEST_PATH
+    path.write_text(rendered, encoding="utf-8")
+    digest = hashlib.sha256(rendered.encode("utf-8")).hexdigest()
+    digest_path = bundle.root / CANONICAL_MANIFEST_DIGEST_PATH
+    digest_path.write_text(f"{digest}  {CANONICAL_MANIFEST_PATH}\n", encoding="utf-8")
+    return path, digest_path, digest
+
+
+def read_canonical_manifest(root: Path = DEFAULT_PROTOCOL_ROOT) -> dict[str, Any]:
+    """Load the frozen protocol's canonical manifest, checking its own digest first.
+
+    Raises:
+        ProtocolError: The manifest or its digest file is missing, the file does not
+            hash to the recorded digest, or its recorded ``content_hash`` no longer
+            matches its content.
+    """
+    path = root / CANONICAL_MANIFEST_PATH
+    digest_path = root / CANONICAL_MANIFEST_DIGEST_PATH
+    if not path.is_file() or not digest_path.is_file():
+        msg = f"no canonical manifest at {path}; run `make pilot-freeze`"
+        raise ProtocolError(msg)
+    rendered = path.read_text(encoding="utf-8")
+    recorded = digest_path.read_text(encoding="utf-8").split()[0]
+    recomputed = hashlib.sha256(rendered.encode("utf-8")).hexdigest()
+    if recorded != recomputed:
+        msg = f"{path} does not match {digest_path}: {recomputed} is not {recorded}"
+        raise ProtocolError(msg)
+    manifest = json.loads(rendered)
+    if not isinstance(manifest, dict):
+        msg = f"{path} must contain a JSON object"
+        raise ProtocolError(msg)
+    claimed = manifest.pop("content_hash", None)
+    if canonical_digest(manifest) != claimed:
+        msg = f"{path} has been edited: its recorded content_hash no longer matches"
+        raise ProtocolError(msg)
+    manifest["content_hash"] = claimed
+    return manifest
+
+
+def canonical_launch_mismatches(
+    configuration: PilotRunConfiguration, manifest: Mapping[str, Any]
+) -> tuple[str, ...]:
+    """Every way a proposed run differs from the frozen protocol it claims to be.
+
+    Compares the run configuration field by field against the canonical manifest,
+    rather than checking a single digest over the two. A digest answers "are these
+    the same" and stops there; a canonical run that is refused should say which of
+    the twenty things it changed, because the operator who set the wrong model
+    identifier needs to be told that and not told "hashes differ".
+
+    Returns:
+        One line per difference, in a fixed order. Empty when the run is the frozen
+        experiment.
+    """
+    protocol = manifest.get("protocol", {})
+    budget = manifest.get("budget", {})
+    models = manifest.get("models", {})
+    prompts = manifest.get("prompts", {})
+    policies = manifest.get("policies", {})
+    shape = manifest.get("run_shape", {})
+    checks: list[tuple[str, Any, Any]] = [
+        ("protocol version", protocol.get("protocol_version"), str(configuration.protocol_version)),
+        ("memory budget", budget.get("memory_budget_tokens"), configuration.memory_budget_tokens),
+        ("counter version", budget.get("counter_version"), str(configuration.counter_version)),
+        ("token count source", budget.get("token_count_source"), configuration.token_count_source),
+        ("writer model", models.get("writer_model_id"), configuration.writer_model.model_id),
+        (
+            "embedding model",
+            models.get("embedding_model_id"),
+            configuration.embedding_model.model_id,
+        ),
+        ("region", models.get("region"), configuration.writer_model.region),
+        (
+            "writer prompt version",
+            prompts.get("writer_prompt_version"),
+            str(configuration.writer_prompt_version),
+        ),
+        (
+            "summary prompt version",
+            prompts.get("summary_prompt_version"),
+            str(configuration.summary_prompt_version),
+        ),
+        (
+            "prompt set digest",
+            prompts.get("hashes", {}).get("prompt_set"),
+            configuration.prompt_set_digest,
+        ),
+        ("maximum cycles", shape.get("maximum_cycles"), configuration.maximum_cycles),
+        (
+            "checkpoint cycles",
+            shape.get("checkpoint_cycles"),
+            list(configuration.checkpoint_cycles),
+        ),
+        ("arms", shape.get("arms"), [arm.value for arm in configuration.arms]),
+        (
+            "heavy-hitter citation decay",
+            policies.get("heavy_hitter", {}).get("citation_decay"),
+            configuration.heavy_hitter_citation_decay,
+        ),
+        (
+            "heavy-hitter recency reserve",
+            policies.get("heavy_hitter", {}).get("recency_reserve"),
+            configuration.heavy_hitter_recency_reserve,
+        ),
+        (
+            "pinned memory",
+            policies.get("pinned_origin", {}).get("pinned_memory_id"),
+            configuration.pinned_origin_memory_id,
+        ),
+        (
+            "random seed",
+            policies.get("seeded_random", {}).get("random_seed"),
+            configuration.random_seed,
+        ),
+        (
+            "Dreamer target summary tokens",
+            policies.get("dreamer", {}).get("target_summary_tokens"),
+            configuration.dreamer_target_summary_tokens,
+        ),
+        (
+            "Dreamer safety margin",
+            policies.get("dreamer", {}).get("safety_margin_tokens"),
+            configuration.dreamer_safety_margin_tokens,
+        ),
+        (
+            "Dreamer minimum sources",
+            policies.get("dreamer", {}).get("min_sources"),
+            configuration.dreamer_min_sources,
+        ),
+    ]
+    differences = [
+        f"{label}: frozen as {frozen!r}, proposed as {proposed!r}"
+        for label, frozen, proposed in checks
+        if frozen != proposed
+    ]
+    # Over the configuration's own files rather than the manifest's. The manifest
+    # also digests `predictions.md`, which a run configuration does not carry because
+    # it is prose that cannot change what a cycle does; `pilot validate` checks that
+    # one against the protocol manifest, where it belongs.
+    frozen_files: Mapping[str, str] = protocol.get("files", {})
+    for name, proposed in sorted(configuration.protocol_content_hashes.items()):
+        frozen = frozen_files.get(name)
+        if frozen != proposed:
+            differences.append(f"{name}: frozen as {frozen!r}, proposed as {proposed!r}")
+    return tuple(differences)
+
+
+def require_canonical_launch(
+    configuration: PilotRunConfiguration, manifest: Mapping[str, Any]
+) -> None:
+    """Refuse a canonical run that is not the experiment that was frozen.
+
+    Raises:
+        ProtocolError: The run differs from the canonical manifest in any recorded
+            field. Nothing has been created when this raises.
+    """
+    differences = canonical_launch_mismatches(configuration, manifest)
+    if not differences:
+        return
+    listed = "\n  ".join(differences)
+    msg = (
+        f"refusing to launch {configuration.run_id} as canonical: it is not the "
+        f"experiment {manifest.get('protocol', {}).get('protocol_version')} was frozen "
+        f"as.\n  {listed}"
+    )
+    raise ProtocolError(msg)

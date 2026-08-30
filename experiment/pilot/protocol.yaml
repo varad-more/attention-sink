@@ -11,13 +11,13 @@
 # point at which this protocol may become FROZEN.
 schema_version: 1
 protocol_version: pilot-v1
-status: local_validated
+status: frozen
 title: Attention Sink pilot - Station Kestrel
 description: >-
   Six arms, identical seed memories and stimuli, one fixed active-memory budget, and
   exactly one difference between them: the mechanism that decides what to forget.
 created_at: '2026-08-29T00:00:00Z'
-content_hash: 'sha256:84431310109da686c55d562335f8d850a168ffef1b45b6aa2907618cb838d13b'
+content_hash: 'sha256:6f1f98bb5528cb6a65d16b871308156a1fb84ce99ce1c79feaae29aca5b2c7f8'
 
 # ------------------------------------------------------------ referenced protocol
 seed_world_version: station-kestrel-pilot-v1
@@ -37,11 +37,25 @@ arms:
   - arm_summary
 
 # --------------------------------------------------------------------- budget
-# Written by `make pilot-calibrate`. See ADR-011: a budget in one counter's tokens
-# measured with another counter is not a budget.
-memory_budget_tokens: 240
-counter_version: heuristic-v1
-token_count_source: local_fixture_heuristic
+# Written by `make pilot-aws-calibrate`, against the writer model's own tokeniser.
+# See ADR-011: a budget in one counter's tokens measured with another counter is not
+# a budget. `make pilot-calibrate` writes the same fields from the local heuristic,
+# which is enough to run a fixture pilot and never enough to freeze one.
+memory_budget_tokens: 208
+counter_version: bedrock-converse-usage-v1
+token_count_source: bedrock_converse_usage
+
+# Calibration provenance. Written by `make pilot-aws-calibrate`, and null until it
+# has run: a budget names a number of tokens, and a number of tokens means nothing
+# without the model that counted them, the Region it was invoked in, when it was
+# measured, and what the seed world looked like at the time (ADR-011, ADR-013).
+# `make pilot-freeze` refuses a protocol whose calibration is still null.
+calibration_writer_model_id: amazon.nova-micro-v1:0
+calibration_region: us-east-1
+calibrated_at: '2026-08-30T12:45:48.754853Z'
+calibration_input_hashes:
+  seed_memories.yaml: 'sha256:a40a5dca419fc72a09969e83bb8554f817e4eb12b764080fa2c9d7b3b5a764e0'
+  stimuli.yaml: 'sha256:148b336536ed543231dc6efccd1106fa55d25f49b7f9793254518952170299e0'
 
 # --------------------------------------------------------------------- prompts
 writer_prompt_version: v1
@@ -83,5 +97,6 @@ model_call_limits:
   evaluator_calls_per_cycle: 0
   interview_calls_per_cycle: 0
   interview_calls_per_checkpoint: 6
-  max_model_calls_per_run: 400
+  token_count_calls_per_cycle: 6
+  max_model_calls_per_run: 600
 max_parallel_model_calls: 3

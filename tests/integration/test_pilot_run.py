@@ -201,7 +201,7 @@ def test_exporting_twice_replaces_rather_than_merges(exported: Path, full_run: F
 def test_the_validate_command_reports_a_validated_protocol(capsys: pytest.CaptureFixture[str]):
     assert main(["--root", str(PILOT_ROOT), "validate"]) == 0
     out = capsys.readouterr().out
-    assert "calibrated: True  local_validated: True  frozen: False" in out
+    assert "calibrated: True  local_validated: True  frozen: True" in out
 
 
 def test_a_command_on_a_missing_protocol_fails_without_a_traceback(

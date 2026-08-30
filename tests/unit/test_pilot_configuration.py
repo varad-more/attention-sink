@@ -15,7 +15,7 @@ from attention_sink.pilot import (
     RunKind,
     model_specs,
 )
-from attention_sink.pilot.cli import BUDGET_ROUNDING, proposed_budget
+from attention_sink.pilot.cli import BUDGET_ROUNDING, counter_identity, proposed_budget
 from tests.conftest import LOCAL_COUNTER_SOURCE
 
 NOW = datetime(2026, 8, 29, tzinfo=UTC)
@@ -24,6 +24,7 @@ NOW = datetime(2026, 8, 29, tzinfo=UTC)
 def configuration(bundle: ProtocolBundle, **overrides: object) -> PilotRunConfiguration:
     gateway = build_gateway(GatewaySettings.from_env(env={}))
     writer, embedding = model_specs(gateway)
+    counter_version, token_count_source = counter_identity(gateway)
     return PilotRunConfiguration.from_bundle(
         bundle,
         run_id="run_cfg",
@@ -32,6 +33,8 @@ def configuration(bundle: ProtocolBundle, **overrides: object) -> PilotRunConfig
         embedding_model=embedding,
         prompt_set_digest=gateway.prompts.prompt_set_digest(),
         app_version="0.1.0",
+        counter_version=counter_version,
+        token_count_source=token_count_source,
         **overrides,  # type: ignore[arg-type]
     )
 

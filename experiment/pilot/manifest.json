@@ -1,16 +1,16 @@
 {
-  "content_hash": "sha256:de9a8bf00ad33541735ff58afcda4d8c02bce7a0f8dd0f71b7b6cbe4658eabf0",
-  "counter_version": "heuristic-v1",
+  "content_hash": "sha256:438efe6804e06bb43be9fa3ac6b3341a48202e3aac1159915efb711151c86594",
+  "counter_version": "bedrock-converse-usage-v1",
   "description": "Six arms, identical seed memories and stimuli, one fixed active-memory budget, and exactly one difference between them: the mechanism that decides what to forget.",
   "files": {
-    "interview_questions.yaml": "sha256:0620d1788f12447fdf96b5ee2325a4e15a0321b18a6e3593d93ba69af4fbc0f3",
+    "interview_questions.yaml": "sha256:9e98fb3cf3dae7340ae54a267696d2584d481ebbdf7bbaa1ef51c3738ddf207b",
     "predictions.md": "sha256:ce5ae2ae41636c7e5624f6e7f571dac258ecf5469a0425c6c512c1a848bfb360",
-    "protocol.yaml": "sha256:84431310109da686c55d562335f8d850a168ffef1b45b6aa2907618cb838d13b",
-    "seed_memories.yaml": "sha256:c9dab899b55d948d2c8f04395f632e3e3ef5297d3a94619563a54349f654f025",
-    "stimuli.yaml": "sha256:96ffbfa838d2284ce9843b4f6fbc2a23292b35fc683e2050a8db2eb58e666224",
-    "truth_ledger.yaml": "sha256:61e80525a66654b0c1ec1d14c5dd4a10aec50b8c5bd83d7aae80229a19094206"
+    "protocol.yaml": "sha256:6f1f98bb5528cb6a65d16b871308156a1fb84ce99ce1c79feaae29aca5b2c7f8",
+    "seed_memories.yaml": "sha256:ff4fedac9d7cd3bb4cf98d3b30e121497ee9e2595eea38c21ba77afea770cca9",
+    "stimuli.yaml": "sha256:b98486d35825ec570d24494f5427a518b4d66c3459d760df120a17c191270376",
+    "truth_ledger.yaml": "sha256:d402324b6bf092c9c39a8da131ce807c2509e9952f02387ac44ee236c0991f77"
   },
-  "memory_budget_tokens": 240,
+  "memory_budget_tokens": 208,
   "prompt_hashes": {
     "citation-auditor/v1": "sha256:49b0ec80cf038f09fe40a39824e979ec09e4379c2564ec36132ef587058514b0",
     "interview/v1": "sha256:ae32b71c3e4aef5185ad2f5884c92a1519eab3bae46a7b39df95e522496b09a5",
@@ -22,7 +22,7 @@
   },
   "protocol_version": "pilot-v1",
   "schema_version": 1,
-  "status": "local_validated",
+  "status": "frozen",
   "title": "Attention Sink pilot - Station Kestrel",
-  "token_count_source": "local_fixture_heuristic"
+  "token_count_source": "bedrock_converse_usage"
 }

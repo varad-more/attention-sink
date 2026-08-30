@@ -120,6 +120,7 @@ class ModelCallBudget:
             ModelRole.WRITER: limits.writer_calls_per_cycle,
             ModelRole.SUMMARIZER: limits.summary_calls_per_cycle,
             ModelRole.EVALUATOR: limits.evaluator_calls_per_cycle,
+            ModelRole.TOKEN_COUNTER: limits.token_count_calls_per_cycle,
         }.get(role, 0)
 
     def remaining(self, role: ModelRole) -> int:

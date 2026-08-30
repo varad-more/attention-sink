@@ -1,7 +1,10 @@
 # 12. A deployment may declare the approximate counter; a canonical run may not
 
 Status: Accepted, 2026-08-30. Amends [ADR-011](011-exact-token-counts-in-production.md),
-which stands for canonical execution.
+which stands for canonical execution. **Superseded in part** by
+[ADR-013](013-counting-by-invocation.md): the allowance below stands, and its claim
+that the canonical run is blocked until `CountTokens` covers a reachable model does
+not — a second exact counter reaches the same tokeniser through `Converse`.
 
 ## Context
 
@@ -63,12 +66,12 @@ Its arms are comparable with each other -- the same counter is applied identical
 all six, which is what ADR-008 says the experiment actually needs -- and are **not**
 comparable with any later run counted the other way.
 
-The canonical twenty-four-cycle run is blocked on this until `CountTokens` supports a
-model the experiment can use. That blocker is recorded in
-`docs/pilot/aws-staging-report.md` rather than worked around, and it is the reason the
-protocol is still `LOCAL_VALIDATED` rather than `AWS_CALIBRATED`: calibrating a budget
-against a counter the canonical run will not use would produce a number nobody should
-freeze.
+The canonical twenty-four-cycle run was blocked on this at Phase 7, and that blocker
+was recorded in `docs/pilot/aws-staging-report.md` rather than worked around. Phase 8
+removed it a different way: ADR-013 adds an exact counter that does not need
+`CountTokens`, the protocol is calibrated against that counter, and only then frozen.
+The paragraph below still describes what would happen to a deployment that had no
+exact counter available at all.
 
 An operator who sets `TOKEN_COUNT_SOURCE=heuristic` and then tries to create a
 canonical run gets a refusal naming the unit. An operator who leaves it unset in a

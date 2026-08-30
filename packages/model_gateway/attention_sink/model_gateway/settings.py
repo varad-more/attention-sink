@@ -80,13 +80,19 @@ class TokenCountSource(StrEnum):
     Not a fallback switch. ADR-011 makes the model's own tokeniser the production
     unit and forbids degrading to an approximation when it fails; ADR-012 adds that a
     deployment whose Region offers no model supporting Bedrock ``CountTokens`` may
-    *declare* the approximate counter instead. The distinction is the guarantee: one
-    is recorded in the run manifest before a single cycle runs, the other would be a
-    unit change nobody could see afterwards.
+    *declare* the approximate counter instead; ADR-013 adds a second exact counter
+    that reaches the same tokeniser through ``Converse``, so a canonical run no longer
+    has to choose between the two. The distinction is the guarantee: what is recorded
+    in the run manifest before a single cycle runs, rather than a unit change nobody
+    could see afterwards.
     """
 
     BEDROCK = "bedrock"
     """Bedrock ``CountTokens``, against the writer's own model. No fallback."""
+
+    CONVERSE = "converse"
+    """The writer model's own count, read off a ``Converse`` call capped at one
+    output token. Exact, billed, and valid for a canonical run (ADR-013)."""
 
     HEURISTIC = "heuristic"
     """The versioned approximate counter. Never valid for a canonical run."""

@@ -109,11 +109,11 @@ def scripted_gateway(
 
 @dataclass
 class FakeRuntime:
-    """A ``bedrock-runtime`` stand-in covering the two operations this package calls.
+    """A ``bedrock-runtime`` stand-in covering the three operations this package calls.
 
     Deliberately not a mocked botocore client. The adapters are written against the
     narrow :class:`BedrockRuntimeApi` protocol, so a small object that answers those
-    two calls is a complete substitute, and a test that patched the SDK would be
+    calls is a complete substitute, and a test that patched the SDK would be
     asserting against the SDK's shape instead.
     """
 
@@ -121,6 +121,7 @@ class FakeRuntime:
     vectors: list[list[float] | BaseException] = field(default_factory=list)
     count_requests: list[Mapping[str, Any]] = field(default_factory=list)
     invoke_requests: list[Mapping[str, Any]] = field(default_factory=list)
+    converse_requests: list[Mapping[str, Any]] = field(default_factory=list)
 
     def count_tokens(self, *, modelId: str, input: Any) -> Mapping[str, Any]:
         """Return the next scripted count, repeating the last once exhausted."""
@@ -130,6 +131,23 @@ class FakeRuntime:
         return {
             "inputTokens": entry,
             "ResponseMetadata": {"RequestId": f"count-{index}", "HTTPStatusCode": 200},
+        }
+
+    def converse(self, *, modelId: str, messages: Any, **rest: Any) -> Mapping[str, Any]:
+        """Return the next scripted count as an invocation's usage report.
+
+        Shares ``token_counts`` with :meth:`count_tokens` on purpose: the two counters
+        are two routes to one number, and a test that scripted them separately could
+        assert a difference the real service does not have.
+        """
+        index = len(self.converse_requests)
+        self.converse_requests.append({"modelId": modelId, "messages": messages, **rest})
+        entry = _next(self.token_counts, index, "token count")
+        return {
+            "output": {"message": {"role": "assistant", "content": [{"text": "."}]}},
+            "stopReason": "max_tokens",
+            "usage": {"inputTokens": entry, "outputTokens": 1, "totalTokens": entry + 1},
+            "ResponseMetadata": {"RequestId": f"converse-{index}", "HTTPStatusCode": 200},
         }
 
     def invoke_model(

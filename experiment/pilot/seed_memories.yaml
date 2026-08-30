@@ -10,14 +10,14 @@
 schema_version: 1
 protocol_version: pilot-v1
 seed_world_version: station-kestrel-pilot-v1
-status: local_validated
+status: frozen
 title: Station Kestrel
 description: >-
   Twelve seed memories establishing Mara Venn, her brother Ivo, the blue key, the
   warning about the northern door, and the station's stopped clocks.
 created_at: '2026-08-29T00:00:00Z'
-content_hash: 'sha256:c9dab899b55d948d2c8f04395f632e3e3ef5297d3a94619563a54349f654f025'
-counter_version: heuristic-v1
+content_hash: 'sha256:ff4fedac9d7cd3bb4cf98d3b30e121497ee9e2595eea38c21ba77afea770cca9'
+counter_version: bedrock-converse-usage-v1
 
 memories:
   - memory_id: seed_01
@@ -38,7 +38,7 @@ memories:
     importance: critical
     initial_position: 2
     entities: [Mara Venn, Ivo, Station Kestrel]
-    provisional_token_count: 11
+    provisional_token_count: 12
     pinned_eligible: false
     content_hash: 'sha256:a1f1d4bfde472ed6238b69baeb2ccc37d214e2e8aa2127a4773ef61410d7a5eb'
 
@@ -60,7 +60,7 @@ memories:
     importance: high
     initial_position: 4
     entities: [Mara Venn, blue key, mother]
-    provisional_token_count: 19
+    provisional_token_count: 17
     pinned_eligible: false
     content_hash: 'sha256:74926100851b6266d4ebc5c522e620106c5b5fcc7a5eb51a868e92d6600729a4'
 
@@ -71,7 +71,7 @@ memories:
     importance: high
     initial_position: 5
     entities: [northern door]
-    provisional_token_count: 15
+    provisional_token_count: 17
     pinned_eligible: false
     content_hash: 'sha256:2a1553331a30ccd4ec38e95836c317ffab7e0df799821a59bd150684f06f740c'
 
@@ -82,7 +82,7 @@ memories:
     importance: medium
     initial_position: 6
     entities: [Station Kestrel, observatory]
-    provisional_token_count: 14
+    provisional_token_count: 9
     pinned_eligible: false
     content_hash: 'sha256:61483d5c9413cb50df2ce4dded4fef33561cfd08dd8c93e89916f15f93f1cdad'
 
@@ -93,7 +93,7 @@ memories:
     importance: high
     initial_position: 7
     entities: [Station Kestrel]
-    provisional_token_count: 12
+    provisional_token_count: 13
     pinned_eligible: false
     content_hash: 'sha256:82ef1e7d595c83a108cc85ef4120750c169f1c5a0be6fea52268ab5ddbf65a3e'
 
@@ -104,7 +104,7 @@ memories:
     importance: high
     initial_position: 8
     entities: [Station Kestrel]
-    provisional_token_count: 18
+    provisional_token_count: 8
     pinned_eligible: false
     content_hash: 'sha256:78be1b1e484e809a78e2e469ebd70b91b4bf96e207fc23a0df9e16bff845bd9c'
 
@@ -115,7 +115,7 @@ memories:
     importance: high
     initial_position: 9
     entities: [Mara Venn, crew manifest]
-    provisional_token_count: 12
+    provisional_token_count: 10
     pinned_eligible: false
     content_hash: 'sha256:0d6ac5f18e794beaa105080731e4afea3daed02a5ed338beed022af62f282f3f'
 
@@ -126,7 +126,7 @@ memories:
     importance: critical
     initial_position: 10
     entities: [Mara Venn, Ivo, radio]
-    provisional_token_count: 12
+    provisional_token_count: 11
     pinned_eligible: false
     content_hash: 'sha256:00653ef2857c4e4725971e2710c4cb16b2e16a456621aa0c9dbc63b3135d8e51'
 
@@ -137,7 +137,7 @@ memories:
     importance: high
     initial_position: 11
     entities: [Ivo, radio]
-    provisional_token_count: 17
+    provisional_token_count: 15
     pinned_eligible: false
     content_hash: 'sha256:6556b7e6cdf29860ab33e4c5487e82ee2e192164c9c621d9987efaa88f5ac697'
 
@@ -148,6 +148,6 @@ memories:
     importance: critical
     initial_position: 12
     entities: [Mara Venn, Ivo]
-    provisional_token_count: 14
+    provisional_token_count: 12
     pinned_eligible: false
     content_hash: 'sha256:82d73050e9acd7fa475e9b80b73fc5aeb0b30b40db3d9dca158e8fc91e3b3e3a'

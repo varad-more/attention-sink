@@ -43,7 +43,12 @@ from attention_sink.model_gateway.schemas import (
 )
 
 if TYPE_CHECKING:  # pragma: no cover - imports exist for typing only
-    from mypy_boto3_bedrock_runtime.type_defs import CountTokensInputTypeDef
+    from mypy_boto3_bedrock_runtime.type_defs import (
+        CountTokensInputTypeDef,
+        InferenceConfigurationTypeDef,
+        MessageTypeDef,
+        SystemContentBlockTypeDef,
+    )
 
 __all__ = [
     "AuditResult",
@@ -395,7 +400,7 @@ class ExactTokenCounter(Protocol):
 
 
 class BedrockRuntimeApi(Protocol):
-    """The two provider operations this package calls directly.
+    """The three provider operations this package calls directly.
 
     Declared as the surface actually used rather than taken as the whole client, so
     the calls stay checked against the real service model while a test can supply
@@ -404,6 +409,22 @@ class BedrockRuntimeApi(Protocol):
 
     def count_tokens(self, *, modelId: str, input: CountTokensInputTypeDef) -> Mapping[str, Any]:
         """Return the exact input-token count for a request."""
+
+    def converse(
+        self,
+        *,
+        modelId: str,
+        messages: Sequence[MessageTypeDef],
+        system: Sequence[SystemContentBlockTypeDef] = ...,
+        inferenceConfig: InferenceConfigurationTypeDef = ...,
+    ) -> Mapping[str, Any]:
+        """Invoke a model through the provider's uniform message interface.
+
+        Called only to count. A request capped at one output token reports, in
+        ``usage.inputTokens``, the exact total the model's own tokeniser produced for
+        that input -- which is what ADR-011 asks for and what ``CountTokens`` would
+        have answered had any reachable model supported it (ADR-013).
+        """
 
     def invoke_model(
         self, *, modelId: str, body: str, accept: str, contentType: str

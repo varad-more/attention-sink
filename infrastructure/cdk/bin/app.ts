@@ -58,13 +58,20 @@ const models = modelIdentifiers();
 /**
  * Which counter the deployment declares, from the same variable the gateway reads.
  *
- * Defaults to `bedrock`. Anything else must be spelled exactly, so a typo deploys
- * the exact counter rather than quietly deploying the approximate one.
+ * Defaults to `bedrock`. Every other value must be spelled exactly, so a typo
+ * deploys an exact counter rather than quietly deploying the approximate one.
  */
-const tokenCountSource =
-  process.env.TOKEN_COUNT_SOURCE?.trim() === 'heuristic'
-    ? ('heuristic' as const)
-    : ('bedrock' as const);
+export function tokenCountSourceOf(
+  env: NodeJS.ProcessEnv = process.env,
+): 'bedrock' | 'converse' | 'heuristic' {
+  const declared = env.TOKEN_COUNT_SOURCE?.trim();
+  return declared === 'heuristic' || declared === 'converse' ? declared : 'bedrock';
+}
+
+const tokenCountSource = tokenCountSourceOf();
+
+/** The commit this bundle was built from, when the deploying process knows one. */
+const gitCommit = process.env.AS_GIT_COMMIT?.trim() ?? '';
 
 /**
  * Browser origins the read API answers, from the same variable the API reads.
@@ -84,6 +91,7 @@ const stack = new PilotStack(app, `AttentionSink-${config.name}`, {
   config,
   tokenCountSource,
   allowedOrigins,
+  ...(gitCommit ? { gitCommit } : {}),
   ...(models ? { models } : {}),
 });
 

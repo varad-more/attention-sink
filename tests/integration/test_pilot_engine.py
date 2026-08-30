@@ -34,8 +34,18 @@ from attention_sink.pilot import (
 )
 from tests.conftest import fixed_clock
 
-TIGHT_BUDGET = 160
-"""Three tokens above the seed set, so the summarising arm compresses on cycle 1."""
+TIGHT_HEADROOM = 3
+"""Tokens above the seed set, so the summarising arm compresses on cycle 1.
+
+Derived from the protocol rather than written down. The seed set's cost is whatever
+the calibrated counter measured it as, and a literal here would silently stop
+producing a tight budget the next time the protocol is calibrated.
+"""
+
+
+def tight_budget(bundle: ProtocolBundle) -> int:
+    """A budget the seed set alone almost fills."""
+    return bundle.seed_world.total_tokens + TIGHT_HEADROOM
 
 
 def make_engine(bundle: ProtocolBundle, gateway: ModelGateway, **overrides: object) -> PilotEngine:
@@ -241,7 +251,9 @@ def test_a_cycle_may_not_make_a_seventh_writer_call(
 def test_a_cycle_may_not_make_a_dreamer_call_it_cannot_afford(
     pilot_bundle: ProtocolBundle, pilot_gateway: ModelGateway
 ):
-    engine = make_engine(pilot_bundle, pilot_gateway, memory_budget_tokens=TIGHT_BUDGET)
+    engine = make_engine(
+        pilot_bundle, pilot_gateway, memory_budget_tokens=tight_budget(pilot_bundle)
+    )
     limits = engine.configuration.model_call_limits
     engine.budget.limits = limits.model_copy(update={"summary_calls_per_cycle": 0})
     with pytest.raises(ModelCallBudgetExceeded, match="0 summarizer call"):
@@ -249,11 +261,14 @@ def test_a_cycle_may_not_make_a_dreamer_call_it_cannot_afford(
     assert engine.current_cycle == 0
 
 
-def test_a_normal_cycle_spends_six_writers_and_nothing_else(pilot_engine: PilotEngine):
+def test_a_normal_cycle_spends_six_writers_six_counts_and_nothing_else(
+    pilot_engine: PilotEngine,
+):
+    """One writer and one count per arm. No auditor, no judge, no interviewer."""
     pilot_engine.run_cycle(1)
     usage = pilot_engine.budget.usage
-    assert usage.calls_by_role == {"writer": 6}
-    assert usage.simulated_calls == 6
+    assert usage.calls_by_role == {"token_counter": 6, "writer": 6}
+    assert usage.simulated_calls == 12
 
 
 def test_a_budget_no_arm_can_satisfy_stops_the_run(
@@ -344,7 +359,9 @@ def test_only_the_summarising_arm_ever_compresses(pilot_engine: PilotEngine):
 def test_every_dreamer_summary_records_its_lineage(
     pilot_bundle: ProtocolBundle, pilot_gateway: ModelGateway
 ):
-    engine = make_engine(pilot_bundle, pilot_gateway, memory_budget_tokens=TIGHT_BUDGET)
+    engine = make_engine(
+        pilot_bundle, pilot_gateway, memory_budget_tokens=tight_budget(pilot_bundle)
+    )
     snapshot = next(s for s in engine.run_cycle(1) if s.arm_id is ArmId.ARM_SUMMARY)
 
     summary = snapshot.created_summary
@@ -366,7 +383,9 @@ def test_every_dreamer_summary_records_its_lineage(
 def test_a_compressed_source_keeps_its_text_in_the_snapshot(
     pilot_bundle: ProtocolBundle, pilot_gateway: ModelGateway
 ):
-    engine = make_engine(pilot_bundle, pilot_gateway, memory_budget_tokens=TIGHT_BUDGET)
+    engine = make_engine(
+        pilot_bundle, pilot_gateway, memory_budget_tokens=tight_budget(pilot_bundle)
+    )
     snapshot = next(s for s in engine.run_cycle(1) if s.arm_id is ArmId.ARM_SUMMARY)
     compressed = [r for r in snapshot.retired_memories if r.status is MemoryStatus.COMPRESSED]
     assert compressed
@@ -376,7 +395,9 @@ def test_a_compressed_source_keeps_its_text_in_the_snapshot(
 def test_a_dreamer_summary_stays_within_the_ceiling_the_mechanism_set(
     pilot_bundle: ProtocolBundle, pilot_gateway: ModelGateway
 ):
-    engine = make_engine(pilot_bundle, pilot_gateway, memory_budget_tokens=TIGHT_BUDGET)
+    engine = make_engine(
+        pilot_bundle, pilot_gateway, memory_budget_tokens=tight_budget(pilot_bundle)
+    )
     snapshot = next(s for s in engine.run_cycle(1) if s.arm_id is ArmId.ARM_SUMMARY)
     assert snapshot.created_summary is not None
     limit = engine.configuration.dreamer_target_summary_tokens
@@ -464,7 +485,7 @@ def test_a_citation_mode_the_engine_does_not_implement_is_refused(
 
 
 def test_a_mechanism_that_asks_for_a_compression_it_cannot_commit_is_refused(
-    pilot_engine: PilotEngine,
+    pilot_engine: PilotEngine, pilot_bundle: ProtocolBundle
 ):
     """The two-stage contract is a protocol, and a policy that half-implements it stops."""
     real = pilot_engine._policies[ArmId.ARM_SUMMARY]
@@ -482,7 +503,9 @@ def test_a_mechanism_that_asks_for_a_compression_it_cannot_commit_is_refused(
         ArmId.ARM_FIFO: PlansButCannotCommit(),
     }
     engine = pilot_engine
-    engine.configuration = engine.configuration.model_copy(update={"memory_budget_tokens": 160})
+    engine.configuration = engine.configuration.model_copy(
+        update={"memory_budget_tokens": tight_budget(pilot_bundle)}
+    )
     with pytest.raises(TypeError, match="cannot commit one"):
         engine.stage_cycle(1)
 

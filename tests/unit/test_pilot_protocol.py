@@ -19,7 +19,12 @@ from attention_sink.pilot import (
     promote_documents,
     return_to_draft,
 )
-from attention_sink.pilot.protocol import DOCUMENT_PATHS, read_document, rewrite_scalars
+from attention_sink.pilot.protocol import (
+    DOCUMENT_PATHS,
+    EXACT_TOKEN_COUNT_SOURCES,
+    read_document,
+    rewrite_scalars,
+)
 from tests.conftest import LOCAL_COUNTER_SOURCE, PILOT_ROOT
 
 
@@ -94,16 +99,33 @@ def test_the_committed_protocol_is_validated_calibrated_and_undrifted(
     pilot_bundle.require_runnable()
 
 
-def test_the_committed_protocol_is_not_frozen(pilot_bundle: ProtocolBundle):
-    """Freezing here would make the canonical run a fixture-counter measurement.
+def test_the_committed_protocol_is_frozen_against_an_exact_counter(
+    pilot_bundle: ProtocolBundle,
+):
+    """Phase 8 froze it, and only because the budget stopped being an approximation.
 
-    See ADR-local-first-pilot.
+    The local-first override allowed freezing at exactly one point: after the budget
+    had been re-derived against the model that will read the memories. Everything
+    asserted here is a precondition of that, so a protocol that lost any of them
+    would fail this test rather than quietly launch a canonical run.
     """
-    assert not pilot_bundle.is_frozen
-    assert pilot_bundle.protocol.status is ProtocolStatus.LOCAL_VALIDATED
-    assert pilot_bundle.protocol.token_count_source == LOCAL_COUNTER_SOURCE
-    with pytest.raises(ProtocolError, match="not frozen"):
-        pilot_bundle.require_runnable(canonical=True)
+    protocol = pilot_bundle.protocol
+    assert pilot_bundle.is_frozen
+    assert protocol.status is ProtocolStatus.FROZEN
+    assert protocol.token_count_source in EXACT_TOKEN_COUNT_SOURCES
+    assert protocol.token_count_source != LOCAL_COUNTER_SOURCE
+    assert protocol.is_exactly_calibrated
+    assert protocol.calibration_writer_model_id
+    assert protocol.calibration_region
+    assert protocol.calibrated_at is not None
+    assert set(protocol.calibration_input_hashes) == {"seed_memories.yaml", "stimuli.yaml"}
+    pilot_bundle.require_runnable(canonical=True)
+
+
+def test_a_local_run_of_the_frozen_protocol_is_still_a_local_run(pilot_bundle: ProtocolBundle):
+    """FROZEN runs locally. What it must not do is claim the canonical counter."""
+    assert pilot_bundle.protocol.status.runs_locally
+    pilot_bundle.require_runnable()
 
 
 def test_every_seed_and_stimulus_carries_the_digest_of_its_own_text(pilot_bundle: ProtocolBundle):
@@ -171,8 +193,10 @@ def test_an_uncalibrated_protocol_refuses_to_run_and_refuses_to_validate(protoco
 
 
 def test_validation_is_idempotent_and_leaves_no_drift(protocol_copy: Path):
-    edit(protocol_copy, "protocol.yaml", status=ProtocolStatus.DRAFT.value)
-    assert promote_documents(load_bundle(protocol_copy)) == ("protocol.yaml",)
+    # Every file, because the committed protocol is frozen and local validation is a
+    # step below that: promoting to it rewrites all five, not only the edited one.
+    return_to_draft(load_bundle(protocol_copy))
+    assert set(promote_documents(load_bundle(protocol_copy))) == set(DOCUMENT_PATHS)
 
     bundle = load_bundle(protocol_copy)
     assert bundle.is_local_validated
@@ -180,14 +204,12 @@ def test_validation_is_idempotent_and_leaves_no_drift(protocol_copy: Path):
     assert promote_documents(bundle) == ()
 
 
-@pytest.mark.parametrize(
-    "status", [ProtocolStatus.AWS_CALIBRATED, ProtocolStatus.FROZEN, ProtocolStatus.RETIRED]
-)
-def test_no_command_may_promote_a_protocol_past_local_validation(
+@pytest.mark.parametrize("status", [ProtocolStatus.DRAFT, ProtocolStatus.RETIRED])
+def test_no_command_may_promote_a_protocol_to_a_status_outside_the_ladder(
     protocol_copy: Path, status: ProtocolStatus
 ):
-    """The whole point of the local-first override: nothing here freezes anything."""
-    with pytest.raises(ProtocolError):
+    """Draft is reached by returning to it, and retirement is not a promotion."""
+    with pytest.raises(ProtocolError, match="not a status"):
         promote_documents(load_bundle(protocol_copy), status)
 
 

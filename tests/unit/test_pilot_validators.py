@@ -189,7 +189,12 @@ def test_a_summary_whose_parents_disagree_with_the_record_is_refused(
 
     config = build_run(
         pilot_bundle, run_id="run_sum", gateway=build_gateway(GatewaySettings.from_env(env={}))
-    ).configuration.model_copy(update={"memory_budget_tokens": 160})
+    ).configuration.model_copy(
+        # Three tokens above the seed set, so the summarising arm compresses on
+        # cycle 1. Derived, because the seed set's cost changes when the protocol is
+        # recalibrated and a literal would silently stop being tight.
+        update={"memory_budget_tokens": pilot_bundle.seed_world.total_tokens + 3}
+    )
     gateway = build_gateway(GatewaySettings.from_env(env={}))
     engine = PilotEngine(configuration=config, bundle=pilot_bundle, gateway=gateway)
     engine.initialize_pilot_run()

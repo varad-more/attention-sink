@@ -31,7 +31,12 @@ from attention_sink.domain import (
     Version,
     make_memory_id,
 )
-from attention_sink.pilot.protocol import CitationMode, ModelCallLimits, ProtocolBundle
+from attention_sink.pilot.protocol import (
+    EXACT_TOKEN_COUNT_SOURCES,
+    CitationMode,
+    ModelCallLimits,
+    ProtocolBundle,
+)
 
 __all__ = [
     "EXACT_TOKEN_COUNT_SOURCES",
@@ -39,13 +44,6 @@ __all__ = [
     "PilotRunConfiguration",
     "RunKind",
 ]
-
-EXACT_TOKEN_COUNT_SOURCES: frozenset[str] = frozenset({"bedrock_count_tokens"})
-"""Counter sources that measure text the way the model that reads it does.
-
-A canonical run must be denominated in one of these. Everything else is an
-approximation, which is fine to *record* and never fine to present as the model's own
-count (ADR-011, amended by ADR-012)."""
 
 
 class RunKind(StrEnum):
@@ -275,14 +273,17 @@ class PilotRunConfiguration(BaseModel):
         app_version: str,
         git_commit: str | None = None,
         run_kind: RunKind = RunKind.LOCAL_FIXTURE,
+        counter_version: str | None = None,
         token_count_source: str | None = None,
     ) -> PilotRunConfiguration:
         """Derive a run configuration from validated protocol files.
 
-        ``token_count_source`` overrides what the protocol declares, for a deployment
-        that counted with something else. Recorded rather than assumed: a manifest
-        that named the protocol's intended counter while the run used another would
-        be the one place a reader could not check.
+        ``counter_version`` and ``token_count_source`` override what the protocol
+        declares, for a run that counted with something else. Both are recorded rather
+        than assumed: a manifest naming the protocol's intended counter while the run
+        used another would be the one place a reader could not check. A frozen
+        protocol carries the canonical counter, and a local regression run of that
+        same protocol counts heuristically and has to say so.
 
         Raises:
             ValueError: The protocol has not been calibrated, so there is no budget
@@ -319,7 +320,7 @@ class PilotRunConfiguration(BaseModel):
             checkpoint_cycles=protocol.checkpoint_cycles,
             arms=protocol.arms,
             memory_budget_tokens=protocol.memory_budget_tokens,
-            counter_version=protocol.counter_version,
+            counter_version=counter_version or protocol.counter_version,
             token_count_source=token_count_source or protocol.token_count_source,
             writer_model=writer_model,
             embedding_model=embedding_model,

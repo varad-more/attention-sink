@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from attention_sink.domain.identifiers import VERSION_PATTERN
 from attention_sink.model_gateway import (
     BEDROCK_COUNTER_VERSION,
+    CONVERSE_COUNTER_VERSION,
     BedrockTokenCounter,
+    ConverseTokenCounter,
     ModelErrorCode,
     ModelInvocationError,
     ModelRole,
@@ -29,8 +33,6 @@ def counter(runtime: FakeRuntime, *, retries: int = 1) -> BedrockTokenCounter:
 
 def test_the_counter_version_is_a_valid_domain_version():
     """It travels on every ``TokenBudget``, which constrains what a version may look like."""
-    import re
-
     assert re.match(VERSION_PATTERN, BEDROCK_COUNTER_VERSION)
 
 
@@ -117,3 +119,90 @@ def test_a_transient_failure_is_retried_and_then_counted():
 
     assert result.tokens == 19
     assert result.metadata.retry_count == 1
+
+
+# ------------------------------------------------- the counter that costs a call
+
+
+def converse_counter(runtime: FakeRuntime, *, retries: int = 1) -> ConverseTokenCounter:
+    return ConverseTokenCounter(
+        model_id="writer-model",
+        region="eu-west-2",
+        client=runtime,
+        retrier=Retrier(policy=RetryPolicy(max_attempts=retries + 1), sleep=lambda _s: None),
+    )
+
+
+def test_the_converse_counter_version_is_a_valid_domain_version():
+    """It travels on every ``TokenBudget`` a canonical run measures."""
+    assert re.match(VERSION_PATTERN, CONVERSE_COUNTER_VERSION)
+    assert CONVERSE_COUNTER_VERSION != BEDROCK_COUNTER_VERSION
+
+
+def test_the_model_counts_its_own_input_through_an_invocation_capped_at_one_token():
+    runtime = FakeRuntime(token_counts=[512])
+
+    result = converse_counter(runtime).count_detailed("a block of active memory")
+
+    assert result.tokens == 512
+    assert result.metadata.role is ModelRole.TOKEN_COUNTER
+    assert result.metadata.simulated is False
+    assert result.metadata.request_id == "converse-0"
+    request = runtime.converse_requests[0]
+    assert request["modelId"] == "writer-model"
+    assert request["messages"] == [
+        {"role": "user", "content": [{"text": "a block of active memory"}]}
+    ]
+    assert request["inferenceConfig"] == {"maxTokens": 1, "temperature": 0.0}
+    assert "system" not in request
+    assert runtime.count_requests == []
+
+
+def test_a_counted_request_carries_the_system_turn_it_will_really_be_sent_with():
+    runtime = FakeRuntime(token_counts=[900])
+
+    result = converse_counter(runtime).count_request(system="instructions", user="memories")
+
+    assert result.tokens == 900
+    request = runtime.converse_requests[0]
+    assert request["system"] == [{"text": "instructions"}]
+    assert request["messages"] == [{"role": "user", "content": [{"text": "memories"}]}]
+
+
+def test_counting_by_invocation_costs_the_one_token_it_generates():
+    """A billed count has to appear in the run's tally as the call it was."""
+    result = converse_counter(FakeRuntime(token_counts=[64])).count_detailed("text")
+
+    assert result.metadata.input_tokens == 64
+    assert result.metadata.output_tokens == 1
+
+
+def test_counting_by_count_tokens_generates_nothing():
+    result = counter(FakeRuntime(token_counts=[64])).count_detailed("text")
+
+    assert result.metadata.input_tokens == 64
+    assert result.metadata.output_tokens == 0
+
+
+def test_a_cached_count_reports_the_tokens_it_did_not_spend_as_zero():
+    """The count is remembered; the cost is not repeated. See the tally in ModelUsage."""
+    runtime = FakeRuntime(token_counts=[64])
+    subject = converse_counter(runtime)
+
+    first = subject.count_detailed("text")
+    second = subject.count_detailed("text")
+
+    assert (first.tokens, second.tokens) == (64, 64)
+    assert first.metadata.input_tokens == 64
+    assert second.metadata.input_tokens == 0
+    assert second.metadata.output_tokens == 0
+    assert len(runtime.converse_requests) == 1
+
+
+def test_a_failed_invocation_count_never_falls_back_to_an_estimate():
+    runtime = FakeRuntime(token_counts=[client_error("ThrottlingException")])
+
+    with pytest.raises(ModelInvocationError) as raised:
+        converse_counter(runtime, retries=0).count("text the budget needs a number for")
+
+    assert raised.value.metadata.error_code is ModelErrorCode.THROTTLING

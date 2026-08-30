@@ -16,3 +16,7 @@ graphify-out/
 apps/web/test-results/
 apps/web/playwright-report/
 apps/web/dist/
+
+# The frozen protocol's canonical manifest. Written by `make pilot-freeze` with its
+# own digest recorded beside it, so reformatting it would invalidate the freeze.
+experiment/pilot/canonical-run-manifest.json

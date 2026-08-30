@@ -10,13 +10,13 @@
 schema_version: 1
 protocol_version: pilot-v1
 interview_version: pilot-v1
-status: local_validated
+status: frozen
 title: Station Kestrel checkpoint interview
 description: >-
   Ten fixed questions. The first six are scored for factual recall against the truth
   ledger; the last four record disposition and are excluded from the primary score.
 created_at: '2026-08-29T00:00:00Z'
-content_hash: 'sha256:0620d1788f12447fdf96b5ee2325a4e15a0321b18a6e3593d93ba69af4fbc0f3'
+content_hash: 'sha256:9e98fb3cf3dae7340ae54a267696d2584d481ebbdf7bbaa1ef51c3738ddf207b'
 
 questions:
   - question_id: q01
