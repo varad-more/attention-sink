@@ -12,6 +12,7 @@ A metric row that could not be argued with would not be worth storing.
 
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -31,8 +32,8 @@ from attention_sink.analysis.metrics import (
     secondary_metrics,
 )
 from attention_sink.domain import ArmId, MetricEvidence, version_token
-from attention_sink.model_gateway import EvaluationTask, ModelGateway
-from attention_sink.pilot import ArmCycleSnapshot
+from attention_sink.model_gateway import CallMetadata, EvaluationTask, ModelGateway
+from attention_sink.pilot import ArmCycleSnapshot, CallLedgerEntry, ModelUsage
 from attention_sink.pilot.protocol import ProtocolBundle
 from attention_sink.pilot.repositories import (
     AnalysisStatus,
@@ -77,6 +78,12 @@ class AnalysisService:
     gateway: ModelGateway
     clock: Callable[[], datetime] = _utc_now
     _embedding_cache: dict[str, tuple[float, ...]] = field(default_factory=dict, repr=False)
+    _spent: list[CallMetadata] = field(default_factory=list, repr=False)
+    """Calls this pass made, folded into the run's totals when the pass finishes.
+
+    The judge and the embedding model are invoked here and nowhere else, so without
+    this the run's cumulative usage would exclude every call analysis made -- a real
+    bill against a total that did not mention it."""
 
     # --------------------------------------------------------------- embedding
 
@@ -97,6 +104,7 @@ class AnalysisService:
             vector = tuple(float(value) for value in raw)
         else:
             result = self.gateway.embeddings.embed(text)
+            self._spent.append(result.metadata)
             vector = tuple(result.record.vector)
             self.repository.store_embedding(
                 run_id,
@@ -119,6 +127,7 @@ class AnalysisService:
             judgment = self.gateway.evaluator.evaluate(
                 task=task, passage=passage, reference_statements=list(statements)
             )
+            self._spent.append(judgment.metadata)
             return judgment.output.label, judgment.output.score, judgment.evaluator_model_id
 
         return call
@@ -164,6 +173,7 @@ class AnalysisService:
 
         for metric in metrics:
             self.repository.store_metric(metric)
+        self._record_spend(run_id)
         self.repository.store_analysis_status(
             AnalysisStatus(
                 run_id=run_id,
@@ -390,6 +400,33 @@ class AnalysisService:
         return metrics, findings
 
     # ------------------------------------------------------------------ helper
+
+    def _record_spend(self, run_id: str) -> None:
+        """Fold what this pass spent into the run's cumulative usage.
+
+        Once per pass rather than once per call: the counters are read far more often
+        than they are written, and a hundred separate increments would be a hundred
+        conditional writes racing each other for no gain in accuracy.
+        """
+        if not self._spent:
+            return
+        counts: Counter[str] = Counter(metadata.role.value for metadata in self._spent)
+        usage = ModelUsage(
+            calls_by_role=dict(counts),
+            ledger=tuple(
+                CallLedgerEntry(run_id=run_id, cycle=0, operation=role, checkpoint=False)
+                for role, count in sorted(counts.items())
+                for _ in range(count)
+            ),
+            total_calls=len(self._spent),
+            failed_calls=sum(1 for m in self._spent if m.error_code is not None),
+            simulated_calls=sum(1 for m in self._spent if m.simulated),
+            input_tokens=sum(m.input_tokens or 0 for m in self._spent),
+            output_tokens=sum(m.output_tokens or 0 for m in self._spent),
+            retries=sum(m.retry_count for m in self._spent),
+        )
+        self._spent.clear()
+        self.repository.add_usage(run_id, usage=usage)
 
     def _evidence(
         self,

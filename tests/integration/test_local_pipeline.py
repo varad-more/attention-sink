@@ -113,11 +113,30 @@ def test_every_arm_ends_within_the_budget(pipeline: Pipeline):
 
 
 def test_the_run_records_every_model_call_it_made(pipeline: Pipeline):
+    """Cycle work and analysis work both, because both are real invocations."""
     usage = pipeline.service.get_run(RUN_ID).usage
     assert usage.calls_by_role["writer"] == 6 * CYCLES
     assert usage.calls_by_role["interviewer"] == 18
-    assert "evaluator" not in usage.calls_by_role
+    assert usage.calls_by_role["token_counter"] == 6 * CYCLES
+    assert usage.calls_by_role["evaluator"] > 0
+    assert usage.calls_by_role["embedding"] > 0
     assert len(usage.ledger) == usage.total_calls
+
+
+def test_no_cycle_spends_on_the_judge_or_the_embedding_model(pipeline: Pipeline):
+    """Judging and embedding belong to analysis, which runs after a cycle is sealed.
+
+    Expressed against attribution rather than against the run total: analysis calls
+    are now in the total, and they should be -- they are billed. What must never
+    happen is a *cycle* making one, and a cycle attributes every call to an arm.
+    """
+    ledger = pipeline.service.get_run(RUN_ID).usage.ledger
+    analysis_roles = {"evaluator", "embedding"}
+    for entry in ledger:
+        if entry.operation in analysis_roles:
+            assert entry.arm_id is None, f"{entry.operation} was charged to {entry.arm_id}"
+        if entry.arm_id is not None:
+            assert entry.operation not in analysis_roles
 
 
 # ------------------------------------------------------------------ metrics
