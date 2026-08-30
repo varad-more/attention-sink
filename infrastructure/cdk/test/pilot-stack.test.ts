@@ -176,17 +176,44 @@ describe('the buckets', () => {
   });
 });
 
+/** The one distribution's configuration, asserting on the way that there is one. */
+function distributionConfig(template: Template): Record<string, unknown> {
+  const distributions = Object.values(template.findResources('AWS::CloudFront::Distribution'));
+  expect(distributions).toHaveLength(1);
+  const [distribution] = distributions;
+  return (distribution as { Properties: { DistributionConfig: Record<string, unknown> } })
+    .Properties.DistributionConfig;
+}
+
 describe('the distribution', () => {
   it('reads S3 through Origin Access Control and nothing else', () => {
-    staging.resourceCountIs('AWS::CloudFront::OriginAccessControl', 1);
-    staging.hasResourceProperties(
-      'AWS::CloudFront::Distribution',
-      Match.objectLike({
-        DistributionConfig: Match.objectLike({
-          Origins: Match.arrayWith([Match.objectLike({ OriginAccessControlId: Match.anyValue() })]),
-        }),
-      }),
-    );
+    // Two origins: the exhibition and the dataset. Every one of them has to be an S3
+    // origin behind an Origin Access Control -- `arrayWith` would pass on a template
+    // where one origin was OAC and a second was a public custom origin, which is
+    // exactly the mistake worth catching, so this walks all of them.
+    const origins = distributionConfig(staging).Origins as Record<string, unknown>[];
+    expect(origins).toHaveLength(2);
+    staging.resourceCountIs('AWS::CloudFront::OriginAccessControl', origins.length);
+    for (const origin of origins) {
+      expect(
+        origin.OriginAccessControlId,
+        `${String(origin.Id)} is not behind an OAC`,
+      ).toBeDefined();
+      expect(origin.CustomOriginConfig, `${String(origin.Id)} is a custom origin`).toBeUndefined();
+    }
+  });
+
+  it('serves the dataset from the canonical prefix, and no other prefix', () => {
+    // The export bucket also holds non-canonical rehearsals. A canonical export is
+    // written once and never overwritten; a staging one is not a published dataset.
+    const behaviors = distributionConfig(staging).CacheBehaviors as
+      Record<string, unknown>[] | undefined;
+    expect(behaviors?.map((behavior) => behavior.PathPattern)).toEqual(['/canonical/*']);
+    for (const behavior of behaviors ?? []) {
+      expect(behavior.ViewerProtocolPolicy).toBe('redirect-to-https');
+      expect(behavior.AllowedMethods).toEqual(['GET', 'HEAD']);
+      expect(behavior.ResponseHeadersPolicyId).toBeDefined();
+    }
   });
 
   it('falls back to index.html so a deep link survives a reload', () => {

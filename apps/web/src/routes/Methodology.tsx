@@ -9,6 +9,36 @@
 import { useApi } from '../context';
 import { useOnce } from '../api/hooks';
 import { ARM_PRESENTATION } from '../arms';
+import { datasetPath } from '../dataset';
+import type { ExportManifest } from '../api/types';
+
+/**
+ * The download cell for one export.
+ *
+ * A published export is served from the same distribution as this page, so every file
+ * is a link. An unpublished one -- a local run, a staging rehearsal -- says so instead
+ * of offering a link that would 404, because the honest answer to "can I download
+ * this?" is sometimes no.
+ */
+function downloadCell(manifest: ExportManifest) {
+  const path = datasetPath(manifest.directory);
+  if (path === null) {
+    return <span className="state-empty">not published</span>;
+  }
+  return (
+    <ul className="file-list" data-testid="dataset-downloads">
+      {Object.keys(manifest.files)
+        .sort()
+        .map((name) => (
+          <li key={name}>
+            <a className="mono" href={`${path}${name}`}>
+              {name}
+            </a>
+          </li>
+        ))}
+    </ul>
+  );
+}
 
 /**
  * The caveat about what produced the words, which is different for each kind of run.
@@ -299,6 +329,7 @@ export function Methodology() {
                 <th scope="col">Directory</th>
                 <th scope="col">Files</th>
                 <th scope="col">Labels</th>
+                <th scope="col">Download</th>
               </tr>
             </thead>
             <tbody>
@@ -310,6 +341,7 @@ export function Methodology() {
                   <td className="mono">{manifest.directory}</td>
                   <td>{Object.keys(manifest.files).length}</td>
                   <td>{manifest.labels.join(', ')}</td>
+                  <td>{downloadCell(manifest)}</td>
                 </tr>
               ))}
             </tbody>

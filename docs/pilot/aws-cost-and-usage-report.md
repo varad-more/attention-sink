@@ -8,9 +8,9 @@ configuration. The rates are published on-demand figures for this Region at the 
 writing, they are overridable with `--prices`, and nobody should treat the total as
 what the account was charged. Consult Cost Explorer for that.
 
-**Run:** `run_aws_canonical` (aws_canonical) &nbsp;&nbsp; **Status:** running
-&nbsp;&nbsp; **Cycle:** 8/24
-&nbsp;&nbsp; **Window:** since `2026-08-23T13:35:35+00:00`
+**Run:** `run_aws_canonical` (aws_canonical) &nbsp;&nbsp; **Status:** completed
+&nbsp;&nbsp; **Cycle:** 24/24
+&nbsp;&nbsp; **Window:** since `2026-08-23T17:35:47+00:00`
 
 **Models:** `amazon.nova-micro-v1:0` (writer, summarizer,
 interviewer, evaluator, token counter) and
@@ -19,45 +19,65 @@ interviewer, evaluator, token counter) and
 
 ## Model calls
 
-| role          | calls   | what makes them                          |
-| ------------- | ------- | ---------------------------------------- |
-| writer        | 48      | one per arm per cycle                    |
-| token counter | 48      | one per arm per cycle (ADR-013)          |
-| summarizer    | 3       | the Dreamer arm, only when it compresses |
-| interviewer   | 6       | six per checkpoint                       |
-| evaluator     | 0       | the judge, in analysis                   |
-| embedding     | 0       | identity vectors, in analysis            |
-| **total**     | **105** |                                          |
+| role          | calls    | what makes them                          |
+| ------------- | -------- | ---------------------------------------- |
+| writer        | 144      | one per arm per cycle                    |
+| token counter | 144      | one per arm per cycle (ADR-013)          |
+| summarizer    | 10       | the Dreamer arm, only when it compresses |
+| interviewer   | 18       | six per checkpoint                       |
+| evaluator     | 1013     | the judge, in analysis                   |
+| embedding     | 100      | identity vectors, in analysis            |
+| **total**     | **1429** |                                          |
 
-| quantity        | value   |
-| --------------- | ------- |
-| input tokens    | 122,894 |
-| output tokens   | 29,688  |
-| failed calls    | 0       |
-| retries         | 0       |
-| simulated calls | 0       |
+| quantity        | value     |
+| --------------- | --------- |
+| input tokens    | 3,012,541 |
+| output tokens   | 342,998   |
+| failed calls    | 0         |
+| retries         | 5         |
+| simulated calls | 0         |
 
 ### Dreamer overhead
 
 The summarising arm is the only one that makes a second generation in a cycle, and it
-makes one only when its mechanism decides to compress. It made **3**
-summary calls against **48** writer calls across the whole run — the price of
-the sixth arm, in calls, is 6.2% on top of the writing
+makes one only when its mechanism decides to compress. It made **10**
+summary calls against **144** writer calls across the whole run — the price of
+the sixth arm, in calls, is 6.9% on top of the writing
 every arm does.
 
 ## Per cycle
 
-| cycle | writer | counts | summary | interview | total |
-| ----- | ------ | ------ | ------- | --------- | ----- |
-| 0     | 0      | 0      | 0       | 6         | 6     |
-| 1     | 6      | 6      | 0       | 0         | 12    |
-| 2     | 6      | 6      | 0       | 0         | 12    |
-| 3     | 6      | 6      | 0       | 0         | 12    |
-| 4     | 6      | 6      | 1       | 0         | 13    |
-| 5     | 6      | 6      | 0       | 0         | 12    |
-| 6     | 6      | 6      | 1       | 0         | 13    |
-| 7     | 6      | 6      | 0       | 0         | 12    |
-| 8     | 6      | 6      | 1       | 0         | 13    |
+Cycle work is the first four columns. The judge and the embedding model are asked about
+the run rather than about any one cycle, and the ledger records them at cycle zero;
+they are the `analysis` column, and they are the reason that row is large.
+
+| cycle | writer | counts | summary | interview | analysis | total |
+| ----- | ------ | ------ | ------- | --------- | -------- | ----- |
+| 0     | 0      | 0      | 0       | 6         | 1113     | 1119  |
+| 1     | 6      | 6      | 0       | 0         | 0        | 12    |
+| 2     | 6      | 6      | 0       | 0         | 0        | 12    |
+| 3     | 6      | 6      | 0       | 0         | 0        | 12    |
+| 4     | 6      | 6      | 1       | 0         | 0        | 13    |
+| 5     | 6      | 6      | 0       | 0         | 0        | 12    |
+| 6     | 6      | 6      | 1       | 0         | 0        | 13    |
+| 7     | 6      | 6      | 0       | 0         | 0        | 12    |
+| 8     | 6      | 6      | 1       | 0         | 0        | 13    |
+| 9     | 6      | 6      | 0       | 0         | 0        | 12    |
+| 10    | 6      | 6      | 1       | 0         | 0        | 13    |
+| 11    | 6      | 6      | 1       | 0         | 0        | 13    |
+| 12    | 6      | 6      | 0       | 6         | 0        | 18    |
+| 13    | 6      | 6      | 1       | 0         | 0        | 13    |
+| 14    | 6      | 6      | 0       | 0         | 0        | 12    |
+| 15    | 6      | 6      | 1       | 0         | 0        | 13    |
+| 16    | 6      | 6      | 0       | 0         | 0        | 12    |
+| 17    | 6      | 6      | 0       | 0         | 0        | 12    |
+| 18    | 6      | 6      | 1       | 0         | 0        | 13    |
+| 19    | 6      | 6      | 0       | 0         | 0        | 12    |
+| 20    | 6      | 6      | 1       | 0         | 0        | 13    |
+| 21    | 6      | 6      | 0       | 0         | 0        | 12    |
+| 22    | 6      | 6      | 0       | 0         | 0        | 12    |
+| 23    | 6      | 6      | 1       | 0         | 0        | 13    |
+| 24    | 6      | 6      | 0       | 6         | 0        | 18    |
 
 ## Per arm
 
@@ -66,42 +86,42 @@ about the run, not on behalf of one mechanism.
 
 | arm         | writer | counts | summary | interview | total |
 | ----------- | ------ | ------ | ------- | --------- | ----- |
-| arm_fifo    | 8      | 8      | 0       | 1         | 17    |
-| arm_heavy   | 8      | 8      | 0       | 1         | 17    |
-| arm_lru     | 8      | 8      | 0       | 1         | 17    |
-| arm_random  | 8      | 8      | 0       | 1         | 17    |
-| arm_sink    | 8      | 8      | 0       | 1         | 17    |
-| arm_summary | 8      | 8      | 3       | 1         | 20    |
+| arm_fifo    | 24     | 24     | 0       | 3         | 51    |
+| arm_heavy   | 24     | 24     | 0       | 3         | 51    |
+| arm_lru     | 24     | 24     | 0       | 3         | 51    |
+| arm_random  | 24     | 24     | 0       | 3         | 51    |
+| arm_sink    | 24     | 24     | 0       | 3         | 51    |
+| arm_summary | 24     | 24     | 10      | 3         | 61    |
 
 ## Infrastructure
 
-| resource                        | measured |
-| ------------------------------- | -------- |
-| run-cycle invocations           | 9        |
-| analysis invocations            | 8        |
-| read-API invocations            | 39       |
-| Lambda GB-seconds               | 373.0    |
-| DynamoDB items (table estimate) | 0        |
-| DynamoDB bytes (table estimate) | 0        |
-| snapshots stored                | 48       |
-| interviews stored               | 6        |
-| metric rows stored              | 670      |
-| export bucket bytes             | 0        |
-| frontend bucket bytes           | 247,350  |
-| CloudFront requests             | 20       |
-| CloudFront bytes                | 631,111  |
-| schedule state                  | ENABLED  |
+| resource                        | measured   |
+| ------------------------------- | ---------- |
+| run-cycle invocations           | 95         |
+| analysis invocations            | 24         |
+| read-API invocations            | 462        |
+| Lambda GB-seconds               | 2749.4     |
+| DynamoDB items (table estimate) | 2,441      |
+| DynamoDB bytes (table estimate) | 6,995,092  |
+| snapshots stored                | 144        |
+| interviews stored               | 18         |
+| metric rows stored              | 2,062      |
+| export bucket bytes             | 2,889,127  |
+| frontend bucket bytes           | 247,808    |
+| CloudFront requests             | 433        |
+| CloudFront bytes                | 11,310,940 |
+| schedule state                  | DISABLED   |
 
 ## Estimated cost
 
 | line              | basis                                      | estimate    |
 | ----------------- | ------------------------------------------ | ----------- |
-| Bedrock input     | 122,894 tokens                             | $0.0043     |
-| Bedrock output    | 29,688 tokens                              | $0.0042     |
-| Lambda            | 373.0 GB-s                                 | $0.0062     |
-| CloudFront        | 631,111 bytes                              | $0.0001     |
-| Storage (monthly) | 0.000247 GB in S3, 0.000000 GB in DynamoDB | $0.0000     |
-| **total**         |                                            | **$0.0148** |
+| Bedrock input     | 3,012,541 tokens                           | $0.1054     |
+| Bedrock output    | 342,998 tokens                             | $0.0480     |
+| Lambda            | 2749.4 GB-s                                | $0.0459     |
+| CloudFront        | 11,310,940 bytes                           | $0.0013     |
+| Storage (monthly) | 0.003137 GB in S3, 0.006995 GB in DynamoDB | $0.0018     |
+| **total**         |                                            | **$0.2025** |
 
 ### The rates this used
 
@@ -118,7 +138,7 @@ about the run, not on behalf of one mechanism.
 
 ## Scheduler
 
-Final state: **ENABLED**. The run-cycle function's own
+Final state: **DISABLED**. The run-cycle function's own
 `AS_EXECUTION_ENABLED` is the second switch, and both have to be on for a cycle to
 happen. With the schedule disabled the deployment makes no model calls at all and
 costs only storage.

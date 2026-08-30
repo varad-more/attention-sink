@@ -91,6 +91,16 @@ export interface PilotStackProps extends StackProps {
   readonly models?: ModelIdentifiers;
 }
 
+/**
+ * The one export prefix the distribution serves.
+ *
+ * `attention_sink.aws.exports.CANONICAL_PREFIX`. Only the canonical prefix is exposed:
+ * a canonical export is written once and never overwritten, which is what makes it
+ * safe to hand a reader a permanent URL. Non-canonical exports live under a different
+ * prefix and stay private, because a staging rehearsal is not a published dataset.
+ */
+const EXPORT_PREFIX = 'canonical';
+
 const RUNTIME = lambda.Runtime.PYTHON_3_12;
 const ARCHITECTURE = lambda.Architecture.ARM_64;
 
@@ -100,6 +110,7 @@ export class PilotStack extends Stack {
   readonly frontendBucket: s3.Bucket;
   readonly api: HttpApi;
   readonly distribution: cloudfront.Distribution;
+  private securityHeadersPolicy?: cloudfront.ResponseHeadersPolicy;
   readonly runCycleFunction: lambda.Function;
   readonly analysisFunction: lambda.Function;
   readonly readApiFunction: lambda.Function;
@@ -287,6 +298,20 @@ export class PilotStack extends Stack {
         allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD,
         compress: true,
         responseHeadersPolicy: this.securityHeaders(),
+      },
+      additionalBehaviors: {
+        // The dataset, read-only, through the same Origin Access Control as the
+        // exhibition. The export bucket stays private -- nothing is made public here;
+        // CloudFront is given the one prefix an export is written under, and a reader
+        // who wants the evidence can fetch it without an AWS account. Without this the
+        // exhibition can describe a dataset it gives nobody any way to download.
+        [`/${EXPORT_PREFIX}/*`]: {
+          origin: origins.S3BucketOrigin.withOriginAccessControl(this.exportBucket as s3.IBucket),
+          viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+          allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD,
+          compress: true,
+          responseHeadersPolicy: this.securityHeaders(),
+        },
       },
       errorResponses: [
         // A single-page application: every path that is not a file is a route the
@@ -503,8 +528,12 @@ export class PilotStack extends Stack {
    * nothing: its own scripts and styles, its own fonts, and one API. `connect-src`
    * names the API's domain rather than allowing any origin, so a compromised script
    * could not exfiltrate to somewhere else.
+   *
+   * Built once and reused. Every behaviour on the distribution wants the same headers,
+   * and a second call would try to create a second construct under the same id.
    */
   private securityHeaders(): cloudfront.ResponseHeadersPolicy {
+    if (this.securityHeadersPolicy) return this.securityHeadersPolicy;
     const api = `https://${this.api.apiId}.execute-api.${this.region}.${Aws.URL_SUFFIX}`;
     const policy = [
       "default-src 'none'",
@@ -521,7 +550,7 @@ export class PilotStack extends Stack {
       'upgrade-insecure-requests',
     ].join('; ');
 
-    return new cloudfront.ResponseHeadersPolicy(this, 'SecurityHeaders', {
+    this.securityHeadersPolicy = new cloudfront.ResponseHeadersPolicy(this, 'SecurityHeaders', {
       securityHeadersBehavior: {
         contentSecurityPolicy: { contentSecurityPolicy: policy, override: true },
         contentTypeOptions: { override: true },
@@ -542,6 +571,7 @@ export class PilotStack extends Stack {
         xssProtection: { protection: true, modeBlock: true, override: true },
       },
     });
+    return this.securityHeadersPolicy;
   }
 
   /**

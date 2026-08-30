@@ -155,6 +155,22 @@ test('12: export metadata is visible with its provenance labels', async ({ page 
   if (DEPLOYED) {
     await expect(table).not.toContainText('LOCAL_FIXTURE');
   }
+
+  // A published dataset has to be downloadable, not merely described. The link is
+  // followed rather than inspected: an anchor pointing at a prefix the distribution
+  // does not serve looks identical in the DOM and 404s for the reader.
+  const downloads = page.getByTestId('dataset-downloads');
+  if (!DEPLOYED) {
+    await expect(downloads).toHaveCount(0);
+    return;
+  }
+  const checksums = downloads.getByRole('link', { name: 'checksums.sha256' });
+  await expect(checksums).toBeVisible();
+  const href = await checksums.getAttribute('href');
+  expect(href).not.toBeNull();
+  const fetched = await page.request.get(href as string);
+  expect(fetched.status()).toBe(200);
+  expect(await fetched.text()).toContain('run-manifest.json');
 });
 
 test('13: the core flow works on a small screen', async ({ page }, testInfo) => {
