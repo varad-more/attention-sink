@@ -1,0 +1,10 @@
+{
+  "run_id": "run_aws_canonical",
+  "export_id": "export-20260830T163135",
+  "directory": "s3://attentionsink-production-exportbucket4e99310e-gyohrcdchg5s/canonical/run_aws_canonical/",
+  "public_base_url": "https://d1qskxceo899me.cloudfront.net/canonical/run_aws_canonical/",
+  "files": 18,
+  "frozen_protocol_manifest": "sha256:8e218e488c8745f427a1babd216e674da7a019860b799e5d60356a64eaa0971f",
+  "verify": "curl the files listed in checksums.sha256, then sha256sum -c checksums.sha256",
+  "note": "The digests of the eighteen files live in the published checksums.sha256, not here: copying them into this repository would let the two disagree."
+}
