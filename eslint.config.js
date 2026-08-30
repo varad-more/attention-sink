@@ -28,6 +28,28 @@ export default tseslint.config(
     },
   },
   {
+    // Standalone Node scripts, owned by no tsconfig. Type-aware rules need a project
+    // that includes the file, so these get the rules that work without type
+    // information and nothing else -- which still catches what matters in a build
+    // script: an unused variable, unreachable code, a mistyped global.
+    files: ['scripts/**/*.mjs'],
+    ...tseslint.configs.disableTypeChecked,
+    languageOptions: {
+      parserOptions: { projectService: false, project: null },
+      globals: {
+        console: 'readonly',
+        fetch: 'readonly',
+        process: 'readonly',
+        URL: 'readonly',
+        // `document` and `window` appear inside `page.evaluate()` callbacks, which are
+        // serialised and run in the browser rather than in Node. They are real globals
+        // where those functions execute.
+        document: 'readonly',
+        window: 'readonly',
+      },
+    },
+  },
+  {
     // The exhibition renders numbers into strings constantly -- cycle counts, token
     // budgets, distances. `restrict-template-expressions` is there to stop `[object
     // Object]` reaching a user, and a number in a template is never that.

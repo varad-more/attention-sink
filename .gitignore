@@ -48,3 +48,7 @@ apps/web/test-results/
 apps/web/playwright-report/
 apps/web/e2e-results.json
 apps/web/dist/
+
+# Author-only notes on the Builder Center article: the two passages that need a
+# personal decision before publishing. Deliberately not published with the showcase.
+docs/showcase/AWS_BUILDER_CENTER_ARTICLE_EDIT_NOTES.md

@@ -23,3 +23,12 @@ experiment/pilot/canonical-run-manifest.json
 
 # Per-developer Claude Code settings. Git-ignored, not this repository's to format.
 .claude/settings.local.json
+
+# Generated showcase output. `release/showcase-2026/` ships its own `checksums.sha256`
+# over every file it contains, so reformatting one would invalidate the digest it was
+# published with. The asset sources beside it are written by the capture, chart and
+# evidence scripts; reformatting them would show up as a diff on every regeneration.
+release/
+docs/showcase/assets/source/chart-data/
+docs/showcase/assets/source/deployment-evidence.html
+docs/showcase/assets/source/screenshot-metadata.json

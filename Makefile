@@ -16,7 +16,9 @@ SHELL := /bin/bash
 	aws-bundle aws-bundle-fast aws-preflight aws-bootstrap-cdk aws-deploy aws-web-build \
 	aws-status aws-cycle aws-schedule-inspect aws-schedule-enable aws-schedule-disable \
 	aws-invoke-once aws-export aws-smoke aws-destroy aws-outputs aws-bootstrap aws-verify aws-cost \
-	aws-execution-inspect aws-execution-enable aws-execution-disable
+	aws-execution-inspect aws-execution-enable aws-execution-disable \
+	showcase showcase-charts showcase-evidence showcase-capture showcase-release \
+	showcase-verify
 
 UV ?= uv
 NPM ?= npm
@@ -226,6 +228,36 @@ dev: ## Run the web client locally against fixture data
 
 verify: lint typecheck test test-web synth ## Everything CI runs, in CI's order
 	@echo "verify: all checks passed"
+
+# ---------------------------------------------------------------------------
+# The showcase: the README's images, the article, and the submission package.
+#
+# Everything here reads the deployed exhibition and the public read API. Only
+# `showcase-evidence` touches AWS, and only through three describe-style calls. None
+# of it can produce an image from a fixture run: the capture refuses any page that
+# renders the simulation banner, and refuses any run that is not the canonical one at
+# twenty-four of twenty-four.
+# ---------------------------------------------------------------------------
+
+showcase-charts: ## Redraw the six charts and the two diagrams from the canonical run
+	$(UV) run python scripts/build_showcase_charts.py --fetch
+	$(UV) run python scripts/build_showcase_diagrams.py
+
+showcase-evidence: ## Re-collect the AWS deployment evidence card (needs credentials)
+	$(UV) run python scripts/build_deployment_evidence.py
+
+showcase-capture: ## Re-take every screenshot from the deployed exhibition
+	node scripts/capture_showcase_screenshots.mjs
+
+showcase-release: ## Rebuild the paste-ready article and the submission package
+	$(UV) run python scripts/build_paste_ready_article.py
+	$(UV) run python scripts/build_release_package.py
+
+showcase-verify: ## Check the README, the article, the assets and the release package
+	$(UV) run python scripts/validate_showcase_content.py
+
+showcase: showcase-charts showcase-evidence showcase-capture showcase-release showcase-verify ## The whole showcase pipeline, end to end
+	@echo "showcase: rebuilt and verified"
 
 clean: ## Remove build, cache, and coverage artefacts
 	rm -rf .pytest_cache .mypy_cache .ruff_cache .hypothesis .coverage coverage.xml \
