@@ -3,16 +3,21 @@
 # `memory_budget_tokens` and `counter_version` are null in a draft on purpose. The
 # budget is denominated in the tokens of the counter that will measure it, and that
 # number is not known until the seed world has been calibrated against that counter.
-# `make pilot-freeze` refuses a protocol whose budget is still null.
+# `make pilot-local-validate` refuses a protocol whose budget is still null.
+#
+# The budget written here is a PROVISIONAL_LOCAL_APPROXIMATION: it is denominated in
+# the deterministic local counter's tokens, not the production model's. It becomes
+# the canonical budget only at AWS calibration in Phase 8, which is also the only
+# point at which this protocol may become FROZEN.
 schema_version: 1
 protocol_version: pilot-v1
-status: frozen
+status: local_validated
 title: Attention Sink pilot - Station Kestrel
 description: >-
   Six arms, identical seed memories and stimuli, one fixed active-memory budget, and
   exactly one difference between them: the mechanism that decides what to forget.
 created_at: '2026-08-29T00:00:00Z'
-content_hash: 'sha256:a96fe422aa032d6f32679244eecf9d79d70c40d697c4b302c0147af298c8dca5'
+content_hash: 'sha256:84431310109da686c55d562335f8d850a168ffef1b45b6aa2907618cb838d13b'
 
 # ------------------------------------------------------------ referenced protocol
 seed_world_version: station-kestrel-pilot-v1
@@ -21,7 +26,7 @@ truth_ledger_version: station-kestrel-pilot-v1
 interview_version: pilot-v1
 
 # ------------------------------------------------------------------- run shape
-max_cycles: 24
+maximum_cycles: 24
 checkpoint_cycles: [0, 12, 24]
 arms:
   - arm_fifo
@@ -36,6 +41,7 @@ arms:
 # measured with another counter is not a budget.
 memory_budget_tokens: 240
 counter_version: heuristic-v1
+token_count_source: local_fixture_heuristic
 
 # --------------------------------------------------------------------- prompts
 writer_prompt_version: v1

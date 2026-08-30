@@ -209,8 +209,10 @@ class PilotEngine:
 
     def __post_init__(self) -> None:
         """Build the per-run call budget and the mechanisms this protocol configures."""
-        self.configuration.require_canonical_ready()
-        self.budget = ModelCallBudget(limits=self.configuration.model_call_limits)
+        self.configuration.require_run_kind_consistent()
+        self.budget = ModelCallBudget(
+            limits=self.configuration.model_call_limits, run_id=self.configuration.run_id
+        )
         self._policies = policies_for(self.configuration.policy_configuration)
 
     # ------------------------------------------------------------ initialisation
@@ -228,7 +230,7 @@ class PilotEngine:
                 starts from, which is a calibration failure rather than a run one.
         """
         seeds = self.bundle.seed_world.memories
-        total = sum(seed.token_count or 0 for seed in seeds)
+        total = sum(seed.provisional_token_count or 0 for seed in seeds)
         if total > self.configuration.memory_budget_tokens:
             msg = (
                 f"the seed set costs {total} tokens, over the "
@@ -251,13 +253,40 @@ class PilotEngine:
                 [
                     state.mint(
                         text=seed.text,
-                        token_count=seed.token_count or 1,
+                        token_count=seed.provisional_token_count or 1,
                         memory_kind=MemoryKind.SEED,
                         cycle=0,
                     )
                 ]
             )
         return state
+
+    def restore(
+        self,
+        states: Mapping[ArmId, MemoryState],
+        *,
+        cycle: int,
+        status: RunStatus,
+    ) -> None:
+        """Replace this engine's memory with state loaded from a store.
+
+        The seam persistence needs. An engine is otherwise the only thing that knows
+        where a run has got to, which is right for a single process and wrong for a
+        service that is constructed fresh per invocation.
+
+        Raises:
+            ValueError: The states do not cover exactly the configured arms.
+        """
+        configured = set(self.configuration.arms)
+        if set(states) != configured:
+            msg = (
+                f"cannot restore {sorted(a.value for a in states)} into a run configuring "
+                f"{sorted(a.value for a in configured)}"
+            )
+            raise ValueError(msg)
+        self._states = dict(states)
+        self.current_cycle = cycle
+        self.status = status
 
     # ----------------------------------------------------------------- queries
 
@@ -298,8 +327,8 @@ class PilotEngine:
                 f"{self.current_cycle}; the next cycle is {self.current_cycle + 1}"
             )
             raise CycleSequenceError(msg)
-        if cycle > self.configuration.max_cycles:
-            msg = f"cycle {cycle} is past the configured {self.configuration.max_cycles}"
+        if cycle > self.configuration.maximum_cycles:
+            msg = f"cycle {cycle} is past the configured {self.configuration.maximum_cycles}"
             raise CycleSequenceError(msg)
         return _stimulus_record(self.bundle.stimulus_deck.for_cycle(cycle))
 
@@ -318,7 +347,7 @@ class PilotEngine:
             ModelInvocationError: The call failed after every permitted attempt.
         """
         state = self._states[arm_id]
-        self.budget.spend(ModelRole.WRITER)
+        self.budget.spend(ModelRole.WRITER, arm_id=arm_id.value)
         result = self.gateway.writer.write(
             cycle=cycle,
             stimulus_text=stimulus.text,
@@ -418,7 +447,9 @@ class PilotEngine:
             # round. The plan reserved the identifier the *next* free slot will take,
             # so the state has to have moved on for that reservation to be honoured.
             state = state.apply(decision)
-            created, call = self._write_summary(state, plan=plan, cycle=context.cycle)
+            created, call = self._write_summary(
+                state, plan=plan, cycle=context.cycle, arm_id=arm_id
+            )
             metadata.append(call)
             sources = plan.source_memory_ids
             decision = policy.finalize_compression(state, budget, context, plan, created)
@@ -433,7 +464,7 @@ class PilotEngine:
         )
 
     def _write_summary(
-        self, state: MemoryState, *, plan: CompressionPlan, cycle: int
+        self, state: MemoryState, *, plan: CompressionPlan, cycle: int, arm_id: ArmId
     ) -> tuple[Memory, CallMetadata]:
         """Call the Dreamer for one plan and mint the memory its text becomes.
 
@@ -443,7 +474,7 @@ class PilotEngine:
         """
         active = {memory.memory_id: memory for memory in state.active_memories}
         sources = [active[memory_id] for memory_id in plan.source_memory_ids]
-        self.budget.spend(ModelRole.SUMMARIZER)
+        self.budget.spend(ModelRole.SUMMARIZER, arm_id=arm_id.value)
         result = self.gateway.summarizer.summarize(plan=plan, sources=sources)
         self.budget.record(result.metadata)
         summary = state.mint(
@@ -513,6 +544,7 @@ class PilotEngine:
         )
         snapshot = ArmCycleSnapshot(
             run_id=self.configuration.run_id,
+            run_kind=self.configuration.run_kind,
             arm_id=arm_id,
             cycle=cycle,
             stimulus=stimulus,
@@ -540,6 +572,11 @@ class PilotEngine:
             state_hash=final.state_hash,
             model_metadata=(generation.writer.metadata, *outcome.metadata),
             policy_version=outcome.decisions[-1].policy_version,
+            prompt_versions={
+                "writer": str(self.configuration.writer_prompt_version),
+                "summary": str(self.configuration.summary_prompt_version),
+                "interview": str(self.configuration.interview_version),
+            },
             prompt_hashes=self._prompt_hashes(),
             simulated=self.gateway.simulated,
             completed_at=self.clock(),
@@ -654,7 +691,7 @@ class PilotEngine:
         self.current_cycle = staged.cycle
         self.status = (
             RunStatus.COMPLETED
-            if staged.cycle == self.configuration.max_cycles
+            if staged.cycle == self.configuration.maximum_cycles
             else RunStatus.RUNNING
         )
         return staged.snapshots
@@ -674,8 +711,14 @@ class PilotEngine:
 
     # ----------------------------------------------------------- checkpoints
 
-    def run_checkpoint(self, cycle: int) -> tuple[CheckpointRecord, ...]:
-        """Ask every arm the fixed question set, changing nothing.
+    def run_checkpoint(
+        self, cycle: int, *, arms: Sequence[ArmId] | None = None
+    ) -> tuple[CheckpointRecord, ...]:
+        """Ask the fixed question set, changing nothing.
+
+        ``arms`` narrows the checkpoint to the arms that still need interviewing,
+        which is what makes a re-fired checkpoint cost nothing rather than cost six
+        more interviewer calls.
 
         Spent from a checkpoint allowance rather than the cycle's, so that the normal
         cycle limit stays exactly what the protocol declares: six writer calls, at
@@ -694,14 +737,15 @@ class PilotEngine:
             raise CycleSequenceError(msg)
 
         self.budget.open_cycle(cycle, checkpoint=True)
+        asked = tuple(arms) if arms is not None else self.configuration.arms
         questions = [
             InterviewQuestion(question_id=q.question_id, text=q.text)
             for q in self.bundle.interview.questions
         ]
         records: list[CheckpointRecord] = []
-        for arm_id in self.configuration.arms:
+        for arm_id in asked:
             state = self._states[arm_id]
-            self.budget.spend(ModelRole.INTERVIEWER)
+            self.budget.spend(ModelRole.INTERVIEWER, arm_id=arm_id.value)
             result = self.gateway.interviewer.interview(
                 questions=questions, active_memories=state.active_memories
             )

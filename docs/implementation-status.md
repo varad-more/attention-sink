@@ -225,20 +225,34 @@ downgrades.
 
 ### Delivered
 
-- `experiments/pilot/` - five machine-readable protocol files and one predictions
-  document. The Station Kestrel seed world (twelve memories), a twenty-four stimulus
-  deck across five phases, a twelve-fact truth ledger, a ten-question checkpoint
-  interview, and the protocol that binds them. Every file carries a schema version, a
-  protocol version, a status, a title, a description, a creation time, and a digest of
-  its own content.
+- `experiment/pilot/` - five machine-readable protocol files, a predictions document,
+  and a generated `manifest.json`. The Station Kestrel seed world (twelve memories), a
+  twenty-four stimulus deck across five phases, a twelve-fact truth ledger, a
+  ten-question checkpoint interview, and the protocol that binds them. Every file
+  carries a schema version, a protocol version, a status, a title, a description, a
+  creation time, and a digest of its own content; the manifest collects every digest
+  and the prompt-template hashes in one place.
 - `packages/pilot` - the application service. Protocol loading, cross-file validation,
   calibration, and freezing; a typed `PilotRunConfiguration`; a per-cycle and per-run
   model-call budget; immutable `RunSnapshot` and `ArmCycleSnapshot` records with
   canonical-JSON digests; the cycle engine; the local export; and the commands.
-- Protocol lifecycle enforced by the commands rather than by convention. `DRAFT` may
-  not run canonically, `freeze` refuses an uncalibrated budget, and a frozen file
-  edited afterwards is detected by recomputing its digest. The digest covers parsed
-  content, so reflowing YAML is not a modification and changing a stimulus is.
+- Protocol lifecycle `DRAFT` -> `LOCAL_VALIDATED` -> `AWS_CALIBRATED` -> `FROZEN` ->
+  `RETIRED`, enforced by the commands rather than by convention. A draft runs nothing,
+  `local-validate` refuses an uncalibrated budget, and a validated file edited
+  afterwards is detected by recomputing its digest. **The pilot stops at
+  `LOCAL_VALIDATED`**: `promote_documents` refuses to write `AWS_CALIBRATED` or
+  `FROZEN`, because the budget is denominated in a local approximate counter and
+  freezing that would make the canonical experiment a measurement of the fixture
+  tokeniser. Editing means `make pilot-draft`, which clears every digest. The digest
+  covers parsed content, so reflowing YAML is not a modification and changing a
+  stimulus is.
+- `run_kind` (`LOCAL_FIXTURE` / `AWS_STAGING` / `AWS_CANONICAL`) on the run
+  configuration _and on every snapshot_, alongside `simulated` and
+  `token_count_source`. A snapshot that travels out of its export still says what it
+  is. `require_run_kind_consistent` refuses a canonical run on fixtures _and_ a local
+  run on real models.
+- Model-call usage recorded per run, cycle, arm, and operation, not only as a total: a
+  cumulative count cannot answer which arm spent the Dreamer calls on cycle 14.
 - The cycle engine: verify the cycle is next, load the one shared stimulus, generate
   six arms with bounded concurrency, validate every claimed citation against the
   arm's own state, fold the survivors into the statistics, admit the candidate, apply
@@ -248,8 +262,14 @@ downgrades.
 - Model-call ceilings checked _before_ each call: six writers and at most two Dreamer
   summaries per cycle, no evaluator and no interviewer; six interviewers per
   checkpoint; a whole-run cap on top.
-- `make pilot-validate`, `pilot-calibrate`, `pilot-freeze`, `pilot-local-cycle`,
-  `pilot-local-run`, and `pilot-local-export`.
+- `make pilot-validate`, `pilot-calibrate`, `pilot-local-validate`, `pilot-draft`,
+  `pilot-local-cycle`, `pilot-local-run`, and `pilot-local-export`, over
+  `scripts/validate_local_protocol.py`, `scripts/calibrate_local_budget.py`,
+  `scripts/run_local_fixture_cycle.py`, and
+  `scripts/run_local_fixture_experiment.py`.
+- `docs/pilot/local-first-architecture.md`, `docs/adr/ADR-local-first-pilot.md`, and
+  the generated `docs/pilot/local-token-calibration.md`
+  (PROVISIONAL_LOCAL_APPROXIMATION).
 
 ### Verified results
 
@@ -263,7 +283,66 @@ The 24-cycle fixture run, executed:
   `arm_fifo` 234, `arm_lru` 238, `arm_heavy` 238, `arm_sink` 240, `arm_random` 231,
   `arm_summary` 221; retired counts 18, 17, 17, 17, 19, and 28 respectively. The six
   state hashes differ, which is the whole point of the run.
-- The export writes ten files plus `checksums.sha256`, which `sha256sum -c` verifies.
+- The export writes eleven files plus `checksums.sha256`, which `sha256sum -c` verifies.
+
+## Phase 5 - transactional local persistence, read API, analysis, export
+
+Complete. The application is now persistent and fully local: SQLite, the local
+filesystem, fixture models, and a local HTTP server. No AWS credential is required by
+anything, and no AWS service is called.
+
+### Delivered
+
+- `packages/pilot/repositories.py` - twenty-six provider-independent ports, plus
+  `RunRecord`, `CycleLock`, `PreparedCycle`, `StoredInterview`, `AnalysisStatus`, and
+  `ExportManifestRecord`. The ports live with the application; adapters satisfy them.
+- `packages/persistence` - the SQLite adapter and its migrations. Ten tables, each
+  with a schema version and timestamps. `cycle_snapshots` and `interviews` carry
+  ABORT triggers on UPDATE, so immutability survives code nobody has written yet.
+- `packages/pilot/service.py` - lock, load, stage or reuse, prepare, commit, release.
+  Every step idempotent on its own.
+- The atomic commit: eleven checks and writes in one transaction, rolled back
+  entirely on any failure. No partial cycle is ever visible.
+- `packages/analysis` - Origin Recall, Identity Drift, Graveyard, Graveyard Echo,
+  contradiction analysis, thirteen deterministic secondary metrics, and the
+  seventeen-file dataset export.
+- `packages/api` - the local read API. Sixteen routes, read-only by construction:
+  no mutating verb is registered and a test asserts the route table contains only
+  `GET`. Prepared cycles, future stimuli, evaluator notes, and prompt text are
+  filtered out; prompt versions and hashes are published.
+- `scripts/local_cli.py` (the composition root), `scripts/run_local_scheduler.py`,
+  and `scripts/verify_local_run.py`.
+- `make local-db-migrate`, `local-run-create`, `local-cycle`, `local-status`,
+  `local-scheduler`, `local-api`, `local-analyze`, `local-export`, `local-verify`,
+  `local-reset-demo`, and `local-all`.
+- `docs/pilot/local-backend.md`.
+
+### Verified results
+
+The 24-cycle SQLite run, executed end to end by `make local-all`:
+
+- 144 committed snapshots, 18 interviews at cycles 0, 12, and 24, and 171 model
+  calls: 144 writer, 18 interviewer, 9 Dreamer summary. Zero evaluator, zero auditor.
+- The same final states as the Phase 4 in-memory run - `arm_fifo` 234, `arm_lru` 238,
+  `arm_heavy` 238, `arm_sink` 240, `arm_random` 231, `arm_summary` 221 - which is the
+  cross-check that persistence changed the storage and not the experiment.
+- 252 metric rows, 116 Graveyard entries, 102 echo measurements, 180 contradiction
+  classifications, and divergence matrices at all three checkpoints.
+- The export writes sixteen files plus `checksums.sha256`; all sixteen verify.
+- `scripts/verify_local_run.py` passes all sixteen checks.
+
+### Important decisions
+
+- **The composition root left the pilot package.** The import-boundary test caught
+  `pilot/local.py` importing the SQLite adapter and the analysis package. An
+  application that imports its own adapter has no adapter line left to move in
+  Phase 7, so the commands moved to `scripts/local_cli.py`.
+- **Checkpoint spend is recorded separately.** A checkpoint follows the commit that
+  snapshotted usage, so `add_usage` folds the interviewer calls in afterwards.
+  Without it the run's totals silently excluded eighteen calls.
+- **`check_same_thread=False` on the connection**, because the read API serves sync
+  endpoints from a threadpool. Safe only because every write goes through one
+  `BEGIN IMMEDIATE` transaction and the API never writes.
 
 ### Test and coverage position
 
@@ -289,8 +368,13 @@ The 24-cycle fixture run, executed:
   built. The engine is persistence-independent so that it can be, but this phase runs
   it locally only.
 
-## Phase 5 and later
+## Phase 6 and later
 
-Not started: persistence and the event ledger, Step Functions orchestration, metrics
-computation, public API, WebSocket, forks, moderation, CDK resources, deployment, and
-the experiment views in the web client.
+Not started: the React experiment views (Six Minds, Graveyard, Timeline, Interviews,
+Methodology), and everything AWS - DynamoDB and S3 adapters, Lambda handlers, API
+Gateway, EventBridge Scheduler, CDK resources, deployment, real Bedrock validation,
+the canonical run, and public release.
+
+Deferred by ADR-local-first-pilot rather than unstarted: the event ledger (ADR-002)
+and Step Functions orchestration (ADR-003). Both remain accepted decisions whose
+implementation waits for a phase that needs them.

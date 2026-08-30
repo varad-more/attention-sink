@@ -1,0 +1,28 @@
+{
+  "content_hash": "sha256:de9a8bf00ad33541735ff58afcda4d8c02bce7a0f8dd0f71b7b6cbe4658eabf0",
+  "counter_version": "heuristic-v1",
+  "description": "Six arms, identical seed memories and stimuli, one fixed active-memory budget, and exactly one difference between them: the mechanism that decides what to forget.",
+  "files": {
+    "interview_questions.yaml": "sha256:0620d1788f12447fdf96b5ee2325a4e15a0321b18a6e3593d93ba69af4fbc0f3",
+    "predictions.md": "sha256:ce5ae2ae41636c7e5624f6e7f571dac258ecf5469a0425c6c512c1a848bfb360",
+    "protocol.yaml": "sha256:84431310109da686c55d562335f8d850a168ffef1b45b6aa2907618cb838d13b",
+    "seed_memories.yaml": "sha256:c9dab899b55d948d2c8f04395f632e3e3ef5297d3a94619563a54349f654f025",
+    "stimuli.yaml": "sha256:96ffbfa838d2284ce9843b4f6fbc2a23292b35fc683e2050a8db2eb58e666224",
+    "truth_ledger.yaml": "sha256:61e80525a66654b0c1ec1d14c5dd4a10aec50b8c5bd83d7aae80229a19094206"
+  },
+  "memory_budget_tokens": 240,
+  "prompt_hashes": {
+    "citation-auditor/v1": "sha256:49b0ec80cf038f09fe40a39824e979ec09e4379c2564ec36132ef587058514b0",
+    "interview/v1": "sha256:ae32b71c3e4aef5185ad2f5884c92a1519eab3bae46a7b39df95e522496b09a5",
+    "prompt_set": "sha256:741a27e46422f22364d97e4ac7b76fb430c5686926e6784461a443416d421144",
+    "summarizer/v1": "sha256:5dffbba1fe970803adf8b4fb0d848168787b0ab2627e0b42217f39692830463e",
+    "summary-entailment/v1": "sha256:8e857655566f88678cc0175b5a41e481fecd5156ad11c96e6a20bf227e0dd3be",
+    "truth-evaluator/v1": "sha256:86906d3cc8eaf1eae164613d87f5aec20b2f1e3a94f7fa4724063ba774aba6c5",
+    "writer/v1": "sha256:fac3f188c701f87dfeb00c85ed68472758282ce99603939532032edd9b064c31"
+  },
+  "protocol_version": "pilot-v1",
+  "schema_version": 1,
+  "status": "local_validated",
+  "title": "Attention Sink pilot - Station Kestrel",
+  "token_count_source": "local_fixture_heuristic"
+}

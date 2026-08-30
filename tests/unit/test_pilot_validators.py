@@ -59,7 +59,7 @@ def test_only_one_seed_may_be_pinned_eligible(pilot_bundle: ProtocolBundle):
 def test_an_uncounted_seed_world_reports_itself_uncalibrated(pilot_bundle: ProtocolBundle):
     world = pilot_bundle.seed_world
     memories = list(world.model_dump()["memories"])
-    memories[0] = {**memories[0], "token_count": None}
+    memories[0] = {**memories[0], "provisional_token_count": None}
     partial = SeedWorld.model_validate(dumped(world, memories=memories))
     assert not partial.is_calibrated
     with pytest.raises(ProtocolError, match="has not been calibrated"):

@@ -68,16 +68,30 @@ make test-contract   # opt-in checks against real Bedrock; costs money, skipped 
 The whole 24-cycle experiment runs locally, on fixtures, in about a second:
 
 ```bash
-make pilot-validate      # do the protocol files agree, and has any frozen one been edited?
+make pilot-validate      # do the protocol files agree, and has any validated one been edited?
 make pilot-local-run     # six arms, 24 cycles, exported to .pilot-runs/local
 ```
 
 The export carries a `checksums.sha256` that `sha256sum -c` verifies, and everything in
-it is marked simulated. Editing the protocol means `make pilot-calibrate` and
-`make pilot-freeze` before a run will start again: a canonical run refuses draft files,
-and a frozen file edited afterwards is detected rather than run.
+it is marked simulated, local, and non-canonical. Editing the protocol means
+`make pilot-draft`, then `make pilot-calibrate` and `make pilot-local-validate` before a
+run will start again: a run refuses draft files, and a validated file edited afterwards
+is detected rather than run.
 
-See [docs/pilot-scope.md](docs/pilot-scope.md) for what the pilot narrows and why.
+The pilot protocol stops at `LOCAL_VALIDATED`. It is frozen only after AWS token
+calibration, because its budget is currently denominated in a local approximate
+counter. See [docs/pilot/local-first-architecture.md](docs/pilot/local-first-architecture.md).
+
+The whole application also runs persistently, on SQLite and a local HTTP server, with
+no AWS credential:
+
+```bash
+make local-all       # empty database to verified dataset export
+make local-api       # the read API on http://localhost:8000
+```
+
+See [docs/pilot-scope.md](docs/pilot-scope.md) for what the pilot narrows and why, and
+[docs/pilot/local-backend.md](docs/pilot/local-backend.md) for the persisted backend.
 
 ## Repository layout
 
@@ -86,7 +100,8 @@ apps/web/            React client
 services/            One directory per Lambda handler
 packages/            Importable libraries, no AWS dependency below the adapter line
 infrastructure/cdk/  AWS CDK v2 application
-experiments/         Versioned protocols, seed worlds, stimulus decks, predictions
+experiment/pilot/    The Station Kestrel protocol: seeds, stimuli, ledger, manifest
+scripts/             Local runners: validate, calibrate, one cycle, the whole experiment
 datasets/fixtures/   Deterministic fixtures for local mode
 docs/                Architecture, methodology, operations, and decision records
 tests/               unit, property, integration, e2e

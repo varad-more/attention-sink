@@ -1,7 +1,8 @@
-"""The pilot commands: calibrate, freeze, validate, and how each one refuses."""
+"""The pilot commands: calibrate, local-validate, draft, validate, and how each refuses."""
 
 from __future__ import annotations
 
+import json
 import shutil
 from pathlib import Path
 
@@ -9,10 +10,17 @@ import pytest
 
 from attention_sink.domain import HeuristicTokenCounter
 from attention_sink.model_gateway import GatewaySettings, build_gateway
-from attention_sink.pilot import ProtocolError, ProtocolStatus, calibrate, load_bundle, main
+from attention_sink.pilot import (
+    ProtocolError,
+    ProtocolStatus,
+    calibrate,
+    load_bundle,
+    main,
+    read_manifest,
+)
 from attention_sink.pilot.cli import _rewrite_nested, proposed_budget
 from attention_sink.pilot.protocol import read_document
-from tests.conftest import PILOT_ROOT
+from tests.conftest import LOCAL_COUNTER_SOURCE, PILOT_ROOT
 
 
 @pytest.fixture
@@ -22,6 +30,9 @@ def draft(tmp_path: Path) -> Path:
     shutil.copytree(PILOT_ROOT, root)
     for relative in load_bundle(root).paths:
         _blank(root / relative)
+    # A draft has no manifest: the manifest is written by local-validate and is a
+    # claim about digests a draft does not yet have.
+    (root / "manifest.json").unlink(missing_ok=True)
     return root
 
 
@@ -35,7 +46,7 @@ def _blank(path: Path) -> None:
             lines.append(f"{indent}status: draft\n")
         elif line.strip().startswith("content_hash:"):
             lines.append(f'{indent}content_hash: ""\n')
-        elif key in {"token_count", "counter_version", "memory_budget_tokens"} and (
+        elif key in {"provisional_token_count", "counter_version", "memory_budget_tokens"} and (
             line.strip().startswith(f"{key}:")
         ):
             lines.append(f"{indent}{key}: null\n")
@@ -68,7 +79,7 @@ def test_calibration_writes_counts_hashes_and_a_budget(draft: Path):
     assert bundle.protocol.memory_budget_tokens == budget
     assert bundle.protocol.counter_version == counter.version
     for seed in bundle.seed_world.memories:
-        assert seed.token_count == counter.count(seed.text)
+        assert seed.provisional_token_count == counter.count(seed.text)
         assert seed.content_hash == seed.expected_content_hash
     for stimulus in bundle.stimulus_deck.stimuli:
         assert stimulus.content_hash == stimulus.expected_content_hash
@@ -77,16 +88,16 @@ def test_calibration_writes_counts_hashes_and_a_budget(draft: Path):
 def test_calibration_is_idempotent(draft: Path):
     counter = HeuristicTokenCounter()
     first = calibrate(load_bundle(draft), counter)  # type: ignore[arg-type]
-    before = (draft / "protocols/pilot-v1.yaml").read_bytes()
+    before = (draft / "protocol.yaml").read_bytes()
     second = calibrate(load_bundle(draft), counter)  # type: ignore[arg-type]
     assert first == second
-    assert (draft / "protocols/pilot-v1.yaml").read_bytes() == before
+    assert (draft / "protocol.yaml").read_bytes() == before
 
 
 def test_calibration_preserves_the_comments_a_reviewer_reads(draft: Path):
-    before = (draft / "seed-worlds/station-kestrel-pilot-v1.yaml").read_text().count("#")
+    before = (draft / "seed_memories.yaml").read_text().count("#")
     calibrate(load_bundle(draft), HeuristicTokenCounter())  # type: ignore[arg-type]
-    after = (draft / "seed-worlds/station-kestrel-pilot-v1.yaml").read_text().count("#")
+    after = (draft / "seed_memories.yaml").read_text().count("#")
     assert after == before > 0
 
 
@@ -107,73 +118,121 @@ def test_a_list_item_the_file_does_not_have_is_refused(tmp_path: Path):
 # -------------------------------------------------------------------- commands
 
 
-def test_calibrate_then_freeze_then_run(draft: Path, capsys: pytest.CaptureFixture[str]):
+def test_calibrate_then_local_validate_then_run(draft: Path, capsys: pytest.CaptureFixture[str]):
     """The whole sequence a protocol goes through, in the order it must go through it."""
     assert main(["--root", str(draft), "validate"]) == 0
-    assert "calibrated: False  frozen: False" in capsys.readouterr().out
+    assert "calibrated: False  local_validated: False" in capsys.readouterr().out
 
     assert main(["--root", str(draft), "calibrate"]) == 0
     out = capsys.readouterr().out
     assert "seed tokens:" in out
-    assert "calibrated: True  frozen: False" in out
+    assert "calibrated: True  local_validated: False" in out
 
-    assert main(["--root", str(draft), "freeze"]) == 0
+    assert main(["--root", str(draft), "local-validate"]) == 0
     out = capsys.readouterr().out
-    assert out.count("froze ") == 5
-    assert "calibrated: True  frozen: True" in out
+    assert out.count("\nvalidated ") + out.startswith("validated ") == 5
+    assert "calibrated: True  local_validated: True  frozen: False" in out
+    assert "manifest" in out
 
     assert main(["--root", str(draft), "run", "--cycles", "1"]) == 0
-    assert "SIMULATED" in capsys.readouterr().out
+    assert "SIMULATED - LOCAL - NON-CANONICAL" in capsys.readouterr().out
 
 
-def test_freezing_twice_writes_nothing_the_second_time(
+def test_the_manifest_records_every_file_and_the_prompt_hashes(draft: Path):
+    main(["--root", str(draft), "calibrate"])
+    main(["--root", str(draft), "local-validate"])
+    manifest = read_manifest(draft)
+    assert set(manifest["files"]) == {*load_bundle(draft).paths, "predictions.md"}
+    assert manifest["prompt_hashes"]
+    assert manifest["status"] == ProtocolStatus.LOCAL_VALIDATED.value
+    assert manifest["token_count_source"] == LOCAL_COUNTER_SOURCE
+
+
+def test_an_edited_file_makes_the_manifest_stale(draft: Path, capsys: pytest.CaptureFixture[str]):
+    main(["--root", str(draft), "calibrate"])
+    main(["--root", str(draft), "local-validate"])
+    # Return to draft first, so the *manifest* is what reports the edit rather than
+    # the file's own digest. Both detect it; this test is about the manifest.
+    main(["--root", str(draft), "draft"])
+    deck = draft / "stimuli.yaml"
+    deck.write_text(deck.read_text().replace("cold iron", "warm iron"), encoding="utf-8")
+    main(["--root", str(draft), "local-validate"])
+    capsys.readouterr()
+
+    manifest = draft / "manifest.json"
+    manifest.write_text(
+        manifest.read_text().replace('"stimuli.yaml": "sha256:', '"stimuli.yaml": "sha256:0')
+    )
+    assert main(["--root", str(draft), "validate"]) == 1
+    assert "STALE" in capsys.readouterr().out
+
+
+def test_draft_returns_the_protocol_so_it_can_be_edited(
     draft: Path, capsys: pytest.CaptureFixture[str]
 ):
     main(["--root", str(draft), "calibrate"])
-    main(["--root", str(draft), "freeze"])
+    main(["--root", str(draft), "local-validate"])
     capsys.readouterr()
-    assert main(["--root", str(draft), "freeze"]) == 0
-    assert "already frozen" in capsys.readouterr().out
+
+    assert main(["--root", str(draft), "draft"]) == 0
+    out = capsys.readouterr().out
+    assert out.count("returned ") == 5
+    assert "local_validated: False" in out
+    assert main(["--root", str(draft), "run", "--cycles", "1"]) == 1
+
+    assert main(["--root", str(draft), "draft"]) == 0
+    assert "already a draft" in capsys.readouterr().out
 
 
-def test_freezing_an_uncalibrated_protocol_fails_cleanly(
+def test_validating_twice_writes_nothing_the_second_time(
     draft: Path, capsys: pytest.CaptureFixture[str]
 ):
-    assert main(["--root", str(draft), "freeze"]) == 1
+    main(["--root", str(draft), "calibrate"])
+    main(["--root", str(draft), "local-validate"])
+    capsys.readouterr()
+    assert main(["--root", str(draft), "local-validate"]) == 0
+    assert "already local-validated" in capsys.readouterr().out
+
+
+def test_validating_an_uncalibrated_protocol_fails_cleanly(
+    draft: Path, capsys: pytest.CaptureFixture[str]
+):
+    assert main(["--root", str(draft), "local-validate"]) == 1
     assert "uncalibrated" in capsys.readouterr().err
 
 
 def test_running_a_draft_fails_cleanly(draft: Path, capsys: pytest.CaptureFixture[str]):
     assert main(["--root", str(draft), "run", "--cycles", "1"]) == 1
-    assert "not frozen" in capsys.readouterr().err
+    assert "not validated" in capsys.readouterr().err
 
 
-def test_validate_reports_a_file_edited_after_freezing(
+def test_validate_reports_a_file_edited_after_validation(
     draft: Path, capsys: pytest.CaptureFixture[str]
 ):
     main(["--root", str(draft), "calibrate"])
-    main(["--root", str(draft), "freeze"])
+    main(["--root", str(draft), "local-validate"])
     capsys.readouterr()
 
-    deck = draft / "stimulus-decks/station-kestrel-pilot-v1.yaml"
+    deck = draft / "stimuli.yaml"
     deck.write_text(deck.read_text().replace("cold iron", "warm iron"), encoding="utf-8")
 
     assert main(["--root", str(draft), "validate"]) == 1
     captured = capsys.readouterr()
-    assert "MODIFIED SINCE FREEZING" in captured.out
+    assert "MODIFIED SINCE VALIDATION" in captured.out
     assert "recomputed:" in captured.out
-    assert "modified after freezing" in captured.err
+    assert "modified after validation" in captured.err
 
 
-def test_a_retired_protocol_is_reported_as_not_frozen(
+def test_a_retired_protocol_is_reported_as_not_runnable(
     draft: Path, capsys: pytest.CaptureFixture[str]
 ):
     main(["--root", str(draft), "calibrate"])
-    main(["--root", str(draft), "freeze"])
-    path = draft / "protocols/pilot-v1.yaml"
+    main(["--root", str(draft), "local-validate"])
+    path = draft / "protocol.yaml"
     path.write_text(
         path.read_text().replace(
-            f"status: {ProtocolStatus.FROZEN.value}", f"status: {ProtocolStatus.RETIRED.value}"
+            f"status: {ProtocolStatus.LOCAL_VALIDATED.value}",
+            f"status: {ProtocolStatus.RETIRED.value}",
         ),
         encoding="utf-8",
     )
@@ -183,9 +242,12 @@ def test_a_retired_protocol_is_reported_as_not_frozen(
     assert main(["--root", str(draft), "run", "--cycles", "1"]) == 1
 
 
-def test_the_run_command_can_be_told_it_is_canonical_and_refuses():
-    with pytest.raises(ValueError, match="marked canonical but its models are simulated"):
-        main(["--root", str(PILOT_ROOT), "run", "--cycles", "1", "--canonical"])
+def test_the_run_command_can_be_told_it_is_canonical_and_refuses(
+    capsys: pytest.CaptureFixture[str],
+):
+    """A canonical run needs a frozen protocol, which this phase never produces."""
+    assert main(["--root", str(PILOT_ROOT), "run", "--cycles", "1", "--run-kind", "aws_canonical"])
+    assert "not frozen" in capsys.readouterr().err
 
 
 def test_a_seed_the_counter_cannot_measure_is_refused(draft: Path):
@@ -209,6 +271,70 @@ def test_the_committed_protocol_is_exactly_what_calibration_would_write():
     bundle = load_bundle(PILOT_ROOT)
     counter = HeuristicTokenCounter()
     for seed in bundle.seed_world.memories:
-        assert seed.token_count == counter.count(seed.text)
+        assert seed.provisional_token_count == counter.count(seed.text)
     assert bundle.protocol.memory_budget_tokens == proposed_budget(bundle.seed_world.total_tokens)
-    assert read_document(PILOT_ROOT / "protocols/pilot-v1.yaml")["status"] == "frozen"
+    assert read_document(PILOT_ROOT / "protocol.yaml")["status"] == "local_validated"
+
+
+# -------------------------------------------------------------------- manifest
+
+
+def prompt_hashes(bundle: object) -> dict[str, str]:
+    """The digests the manifest covers, resolved the way a run resolves them."""
+    from attention_sink.pilot.cli import _prompt_hashes
+
+    return _prompt_hashes(bundle)  # type: ignore[arg-type]
+
+
+def test_a_missing_manifest_is_reported_rather_than_assumed_empty(draft: Path):
+    from attention_sink.pilot import manifest_drift, read_manifest
+
+    with pytest.raises(ProtocolError, match="no protocol manifest"):
+        read_manifest(draft)
+    bundle = load_bundle(draft)
+    with pytest.raises(ProtocolError, match="no protocol manifest"):
+        manifest_drift(bundle, prompt_hashes=prompt_hashes(bundle))
+
+
+@pytest.mark.parametrize(
+    ("content", "expected"),
+    [("[]", "must contain a JSON object"), ('{"schema_version": 1}', "records no file digests")],
+)
+def test_a_malformed_manifest_is_refused(draft: Path, content: str, expected: str):
+    from attention_sink.pilot import manifest_drift
+
+    main(["--root", str(draft), "calibrate"])
+    main(["--root", str(draft), "local-validate"])
+    (draft / "manifest.json").write_text(content, encoding="utf-8")
+
+    bundle = load_bundle(draft)
+    with pytest.raises(ProtocolError, match=expected):
+        manifest_drift(bundle, prompt_hashes=prompt_hashes(bundle))
+
+
+def test_a_changed_prompt_template_makes_the_manifest_stale(draft: Path):
+    """The prompts are apparatus too: a re-worded writer prompt is a protocol change."""
+    from attention_sink.pilot import manifest_drift
+
+    main(["--root", str(draft), "calibrate"])
+    main(["--root", str(draft), "local-validate"])
+
+    bundle = load_bundle(draft)
+    hashes = {**prompt_hashes(bundle), "prompt_set": "sha256:something-else"}
+    assert manifest_drift(bundle, prompt_hashes=hashes) == ("prompt templates",)
+
+
+def test_a_file_the_manifest_does_not_know_about_is_reported(draft: Path):
+    from attention_sink.pilot import manifest_drift
+
+    main(["--root", str(draft), "calibrate"])
+    main(["--root", str(draft), "local-validate"])
+    path = draft / "manifest.json"
+    recorded = json.loads(path.read_text(encoding="utf-8"))
+    recorded["files"]["stray.yaml"] = "sha256:0"
+    path.write_text(json.dumps(recorded), encoding="utf-8")
+
+    bundle = load_bundle(draft)
+    assert "stray.yaml (not in manifest)" in manifest_drift(
+        bundle, prompt_hashes=prompt_hashes(bundle)
+    )

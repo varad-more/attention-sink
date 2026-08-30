@@ -22,7 +22,7 @@ from attention_sink.pilot import (
 )
 from attention_sink.pilot.cli import main
 from attention_sink.pilot.export import EXPORT_FILES
-from tests.conftest import PILOT_ROOT, fixed_clock
+from tests.conftest import LOCAL_COUNTER_SOURCE, PILOT_ROOT, fixed_clock
 
 
 class FullRun(NamedTuple):
@@ -39,7 +39,7 @@ def full_run(pilot_bundle: ProtocolBundle) -> FullRun:
     gateway = build_gateway(GatewaySettings.from_env(env={}))
     engine = build_run(pilot_bundle, run_id="run_full", gateway=gateway)
     engine.clock = fixed_clock
-    snapshots, checkpoints = run_cycles(engine, engine.configuration.max_cycles)
+    snapshots, checkpoints = run_cycles(engine, engine.configuration.maximum_cycles)
     return FullRun(engine=engine, snapshots=snapshots, checkpoints=checkpoints)
 
 
@@ -148,7 +148,8 @@ def test_the_export_contains_everything_it_promises(exported: Path):
 
 def test_every_exported_file_matches_its_checksum(exported: Path):
     lines = (exported / "checksums.sha256").read_text(encoding="utf-8").splitlines()
-    assert len(lines) == len(EXPORT_FILES) + 5
+    # Five protocol documents plus the manifest that digests them.
+    assert len(lines) == len(EXPORT_FILES) + 6
     for line in lines:
         digest, name = line.split("  ", 1)
         actual = hashlib.sha256((exported / name).read_bytes()).hexdigest()
@@ -158,7 +159,10 @@ def test_every_exported_file_matches_its_checksum(exported: Path):
 def test_the_manifest_says_the_run_was_simulated(exported: Path):
     manifest = json.loads((exported / "run-manifest.json").read_text(encoding="utf-8"))
     assert manifest["simulated"] is True
-    assert "SIMULATED RUN" in manifest["notice"]
+    assert manifest["run_kind"] == "local_fixture"
+    assert manifest["canonical"] is False
+    assert manifest["token_count_source"] == LOCAL_COUNTER_SOURCE
+    assert "SIMULATED - LOCAL - NON-CANONICAL" in manifest["notice"]
     assert len(manifest["cycle_snapshot_hashes"]) == 24 * 6
     assert manifest["checkpoint_cycles_run"] == [0, 12, 24]
 
@@ -194,10 +198,10 @@ def test_exporting_twice_replaces_rather_than_merges(exported: Path, full_run: F
 # ------------------------------------------------------------------- commands
 
 
-def test_the_validate_command_reports_a_frozen_protocol(capsys: pytest.CaptureFixture[str]):
+def test_the_validate_command_reports_a_validated_protocol(capsys: pytest.CaptureFixture[str]):
     assert main(["--root", str(PILOT_ROOT), "validate"]) == 0
     out = capsys.readouterr().out
-    assert "calibrated: True  frozen: True" in out
+    assert "calibrated: True  local_validated: True  frozen: False" in out
 
 
 def test_a_command_on_a_missing_protocol_fails_without_a_traceback(

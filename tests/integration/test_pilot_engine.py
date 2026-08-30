@@ -117,7 +117,7 @@ def test_a_cycle_cannot_be_run_twice(pilot_engine: PilotEngine):
 
 def test_a_cycle_past_the_protocol_is_refused(pilot_engine: PilotEngine):
     engine = pilot_engine
-    engine.current_cycle = engine.configuration.max_cycles
+    engine.current_cycle = engine.configuration.maximum_cycles
     with pytest.raises(CycleSequenceError, match="past the configured 24"):
         engine.prepare_cycle(25)
 

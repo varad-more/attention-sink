@@ -1,10 +1,15 @@
-"""The local pilot commands: validate, calibrate, freeze, run, export.
+"""The local pilot commands: validate, calibrate, local-validate, draft, run.
 
 Five verbs in the order a protocol goes through them. `validate` says whether the
 files agree with each other. `calibrate` fills in every derived field, the
-active-memory budget included, using the counter the run will actually be measured
-by. `freeze` seals the result. `run` executes it locally and, when asked, writes an
-export directory.
+active-memory budget included, using the deterministic local counter. `local-validate`
+digests the result, promotes it to LOCAL_VALIDATED, and writes the manifest. `draft`
+returns it so it can be edited. `run` executes it locally against fixture models and,
+when asked, writes an export directory.
+
+Nothing here freezes a protocol. A pilot protocol becomes FROZEN only after AWS token
+calibration in Phase 8; freezing a budget denominated in the local counter's tokens
+would make the canonical experiment a measurement of the fixture counter.
 
 Nothing here holds logic of its own. Each command is a thin wrapper over
 `protocol.py`, `engine.py`, and `export.py`, so that anything worth testing is
@@ -28,16 +33,19 @@ from attention_sink.model_gateway import (
     ModelGateway,
     build_gateway,
 )
-from attention_sink.pilot.configuration import ModelSpec, PilotRunConfiguration
+from attention_sink.pilot.configuration import ModelSpec, PilotRunConfiguration, RunKind
 from attention_sink.pilot.engine import CheckpointRecord, PilotEngine
 from attention_sink.pilot.export import export_run
 from attention_sink.pilot.protocol import (
     DEFAULT_PROTOCOL_ROOT,
     ProtocolBundle,
     ProtocolError,
-    freeze_documents,
     load_bundle,
+    manifest_drift,
+    promote_documents,
+    return_to_draft,
     rewrite_scalars,
+    write_manifest,
 )
 from attention_sink.pilot.snapshots import ArmCycleSnapshot
 from attention_sink.protocol import current_version
@@ -138,7 +146,7 @@ def calibrate(bundle: ProtocolBundle, counter: ExactTokenCounter) -> tuple[int, 
         anchor="memory_id",
         values={
             seed.memory_id: {
-                "token_count": str(counts[seed.memory_id]),
+                "provisional_token_count": str(counts[seed.memory_id]),
                 "content_hash": f"'{seed.expected_content_hash}'",
             }
             for seed in seeds
@@ -199,15 +207,15 @@ def build_run(
     *,
     run_id: str,
     gateway: ModelGateway | None = None,
-    canonical: bool = False,
+    run_kind: RunKind = RunKind.LOCAL_FIXTURE,
     now: datetime | None = None,
 ) -> PilotEngine:
     """Build an initialised engine for ``bundle``, ready to run cycle 1.
 
     Raises:
-        ProtocolError: The bundle is not frozen, has drifted, or is uncalibrated.
+        ProtocolError: The bundle is not validated, has drifted, or is uncalibrated.
     """
-    bundle.require_runnable()
+    bundle.require_runnable(canonical=run_kind.is_canonical)
     resolved = gateway if gateway is not None else build_gateway(GatewaySettings.from_env())
     writer, embedding = model_specs(resolved)
     version = current_version()
@@ -220,7 +228,7 @@ def build_run(
         prompt_set_digest=resolved.prompts.prompt_set_digest(bundle.protocol.writer_prompt_version),
         app_version=version.app_version,
         git_commit=version.git_commit,
-        canonical=canonical,
+        run_kind=run_kind,
     )
     engine = PilotEngine(configuration=configuration, bundle=bundle, gateway=resolved)
     engine.initialize_pilot_run()
@@ -261,9 +269,9 @@ def _command_validate(args: argparse.Namespace) -> int:
         recomputed = bundle.digests[name]
         state = document.status.value
         mark = "ok"
-        if document.is_frozen and document.content_hash != recomputed:
-            mark = "MODIFIED SINCE FREEZING"
-        print(f"  {name:<48} {state:<8} {mark}")
+        if document.is_digested and document.content_hash != recomputed:
+            mark = "MODIFIED SINCE VALIDATION"
+        print(f"  {name:<48} {state:<16} {mark}")
         if mark != "ok":
             print(f"      recorded:   {document.content_hash or '(none)'}")
             print(f"      recomputed: {recomputed}")
@@ -272,12 +280,37 @@ def _command_validate(args: argparse.Namespace) -> int:
     print(f"  stimuli: {len(bundle.stimulus_deck.stimuli)}", end="")
     print(f"  facts: {len(bundle.truth_ledger.facts)}", end="")
     print(f"  questions: {len(bundle.interview.questions)}")
-    print(f"  calibrated: {calibrated}  frozen: {bundle.is_frozen}")
+    print(f"  budget: {bundle.protocol.memory_budget_tokens} ", end="")
+    print(f"({bundle.protocol.token_count_source})")
+    print(f"  calibrated: {calibrated}  local_validated: {bundle.is_local_validated}", end="")
+    print(f"  frozen: {bundle.is_frozen}")
+
     drifted = bundle.drifted()
     if drifted:
-        print(f"FAILED: modified after freezing: {', '.join(drifted)}", file=sys.stderr)
+        print(f"FAILED: modified after validation: {', '.join(drifted)}", file=sys.stderr)
         return 1
+    if bundle.is_local_validated:
+        stale = manifest_drift(bundle, prompt_hashes=_prompt_hashes(bundle))
+        if stale:
+            print(f"  manifest                                         STALE: {', '.join(stale)}")
+            print(f"FAILED: manifest disagrees with: {', '.join(stale)}", file=sys.stderr)
+            return 1
+        print("  manifest                                         ok")
     return 0
+
+
+def _prompt_hashes(bundle: ProtocolBundle) -> dict[str, str]:
+    """Every prompt digest the manifest covers, read from a fixture gateway.
+
+    Built from the gateway rather than from the filesystem so the manifest records
+    the templates the run would actually load, resolved the way the run resolves
+    them.
+    """
+    library = build_gateway(GatewaySettings.from_env(env={})).prompts
+    version = bundle.protocol.writer_prompt_version
+    return {t.identifier: t.digest for t in library.manifest(version)} | {
+        "prompt_set": library.prompt_set_digest(version)
+    }
 
 
 def _command_calibrate(args: argparse.Namespace) -> int:
@@ -291,25 +324,41 @@ def _command_calibrate(args: argparse.Namespace) -> int:
     return _command_validate(args)
 
 
-def _command_freeze(args: argparse.Namespace) -> int:
+def _command_local_validate(args: argparse.Namespace) -> int:
     bundle = _load(args)
-    written = freeze_documents(bundle)
+    written = promote_documents(bundle)
     if not written:
-        print("already frozen; nothing to write")
+        print("already local-validated; nothing to write")
     for name in written:
-        print(f"froze {name}")
+        print(f"validated {name}")
+    reloaded = _load(args)
+    path = write_manifest(reloaded, prompt_hashes=_prompt_hashes(reloaded))
+    print(f"wrote {path}")
+    return _command_validate(args)
+
+
+def _command_draft(args: argparse.Namespace) -> int:
+    """Return every document to DRAFT so the protocol can be edited again."""
+    written = return_to_draft(_load(args))
+    if not written:
+        print("already a draft; nothing to write")
+    for name in written:
+        print(f"returned {name} to draft")
     return _command_validate(args)
 
 
 def _command_run(args: argparse.Namespace) -> int:
     bundle = _load(args)
-    engine = build_run(bundle, run_id=args.run_id, canonical=args.canonical)
+    run_kind = RunKind(args.run_kind)
+    engine = build_run(bundle, run_id=args.run_id, run_kind=run_kind)
     configuration = engine.configuration
     if configuration.simulated:
-        print("SIMULATED: no model produced anything in this run.")
+        print("SIMULATED - LOCAL - NON-CANONICAL: no model produced anything in this run.")
+        print("These results describe application behaviour, not model behaviour.")
+    print(f"run kind: {configuration.run_kind.value}")
     print(f"run {configuration.run_id}: {len(configuration.arms)} arms, ", end="")
     print(f"{configuration.memory_budget_tokens} token budget, ", end="")
-    print(f"{configuration.max_cycles} cycles")
+    print(f"{configuration.maximum_cycles} cycles")
 
     snapshots, checkpoints = run_cycles(engine, args.cycles)
     for arm_id in configuration.arms:
@@ -343,7 +392,8 @@ def _parser() -> argparse.ArgumentParser:
     for name, handler in (
         ("validate", _command_validate),
         ("calibrate", _command_calibrate),
-        ("freeze", _command_freeze),
+        ("local-validate", _command_local_validate),
+        ("draft", _command_draft),
     ):
         subcommands.add_parser(name).set_defaults(handler=handler)
 
@@ -351,7 +401,9 @@ def _parser() -> argparse.ArgumentParser:
     run.add_argument("--cycles", type=int, default=24)
     run.add_argument("--run-id", default="pilot_local")
     run.add_argument("--out", type=Path, default=None)
-    run.add_argument("--canonical", action="store_true")
+    run.add_argument(
+        "--run-kind", default=RunKind.LOCAL_FIXTURE.value, choices=[k.value for k in RunKind]
+    )
     run.set_defaults(handler=_command_run)
     return parser
 

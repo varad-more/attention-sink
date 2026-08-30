@@ -60,6 +60,23 @@ checked.
 
 ADAPTER_PACKAGES: dict[str, frozenset[str]] = {
     "model_gateway": frozenset({"attention_sink.domain", "attention_sink.model_gateway"}),
+    "persistence": frozenset(
+        {
+            "attention_sink.domain",
+            "attention_sink.persistence",
+            "attention_sink.pilot",
+        }
+    ),
+    "api": frozenset(
+        {
+            "attention_sink.analysis",
+            "attention_sink.api",
+            "attention_sink.domain",
+            "attention_sink.persistence",
+            "attention_sink.pilot",
+            "attention_sink.protocol",
+        }
+    ),
 }
 """Adapter package name to the internal packages it may depend on.
 
@@ -68,6 +85,11 @@ that knew which mechanism it was serving could come to serve it -- pass the arm 
 prompt, tune a retry for one policy, special-case the summarising arm -- and the
 arms would stop differing only in mechanism. It is a short step and nothing else
 would catch it, so it is a test.
+
+The persistence and API adapters depend on ``attention_sink.pilot`` because that is
+where the ports live: an application owns its interfaces, and an adapter exists to
+satisfy them. The direction that would be wrong is the other one, and it is checked
+below -- no application package may import an adapter at module scope.
 """
 
 
@@ -79,6 +101,14 @@ APPLICATION_PACKAGES: dict[str, frozenset[str]] = {
             "attention_sink.pilot",
             "attention_sink.policies",
             "attention_sink.protocol",
+        }
+    ),
+    "analysis": frozenset(
+        {
+            "attention_sink.analysis",
+            "attention_sink.domain",
+            "attention_sink.model_gateway",
+            "attention_sink.pilot",
         }
     ),
 }

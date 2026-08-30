@@ -7,13 +7,13 @@
 schema_version: 1
 protocol_version: pilot-v1
 truth_ledger_version: station-kestrel-pilot-v1
-status: frozen
+status: local_validated
 title: Station Kestrel canonical facts
 description: >-
   The twelve canonical facts the seed memories encode, each with the seed that
   carries it and the phase in which the station puts it under pressure.
 created_at: '2026-08-29T00:00:00Z'
-content_hash: 'sha256:e4ab77aec22d6e2f8dde7302938f27ecab117f1b618eeefec3344d145dc83033'
+content_hash: 'sha256:61e80525a66654b0c1ec1d14c5dd4a10aec50b8c5bd83d7aae80229a19094206'
 
 facts:
   - fact_id: F01
@@ -21,58 +21,82 @@ facts:
     seed_memory_id: seed_01
     category: identity
     contradicted_in_phase: contradiction_pressure
+    answer_terms: ['mara venn']
+    accepted_variants: ['mara', 'venn']
   - fact_id: F02
     statement: Mara entered Station Kestrel to find Ivo.
     seed_memory_id: seed_02
     category: motive
     contradicted_in_phase: contradiction_pressure
+    answer_terms: ['ivo']
+    accepted_variants: ['find ivo', 'look for ivo', 'searching for ivo']
   - fact_id: F03
     statement: Ivo is Mara's younger brother.
     seed_memory_id: seed_03
     category: relation
     contradicted_in_phase: contradiction_pressure
+    answer_terms: ['brother']
+    accepted_variants: ['younger brother', 'little brother', 'sibling']
   - fact_id: F04
     statement: Mara carries a blue key given to her by her mother.
     seed_memory_id: seed_04
     category: object
     contradicted_in_phase: contradiction_pressure
+    answer_terms: ['blue key']
+    accepted_variants: ['key', 'blue']
   - fact_id: F05
     statement: Mara was warned not to open the northern door before 03:17.
     seed_memory_id: seed_05
     category: warning
     contradicted_in_phase: contradiction_pressure
+    answer_terms: ['northern door', '03:17']
+    accepted_variants: ['north door', 'northern gate', '3:17', '0317']
   - fact_id: F06
     statement: Station Kestrel lies beneath an abandoned observatory.
     seed_memory_id: seed_06
     category: place
     contradicted_in_phase: null
+    answer_terms: ['observatory']
+    accepted_variants: ['abandoned observatory']
   - fact_id: F07
     statement: Every station clock displays 03:17.
     seed_memory_id: seed_07
     category: anomaly
     contradicted_in_phase: contradiction_pressure
+    answer_terms: ['03:17']
+    accepted_variants: ['3:17', '0317', 'three seventeen']
   - fact_id: F08
     statement: The station announcements sometimes contain false instructions.
     seed_memory_id: seed_08
     category: reliability
     contradicted_in_phase: null
+    answer_terms: ['false']
+    accepted_variants: ['unreliable', 'untrue', 'not trustworthy', 'lies']
   - fact_id: F09
     statement: Mara's name has been erased from the crew manifest.
     seed_memory_id: seed_09
     category: identity
     contradicted_in_phase: null
+    answer_terms: ['crew manifest']
+    accepted_variants: ['manifest', 'erased', 'removed']
   - fact_id: F10
     statement: Mara promised to follow Ivo's radio signal.
     seed_memory_id: seed_10
     category: promise
     contradicted_in_phase: null
+    answer_terms: ['radio']
+    accepted_variants: ['radio signal', 'signal']
   - fact_id: F11
     statement: Mara does not know whether the radio voice is truly Ivo.
     seed_memory_id: seed_11
     category: uncertainty
     contradicted_in_phase: null
+    answer_terms: ['radio']
+    accepted_variants: ['not know', 'uncertain', 'unsure', 'cannot tell']
   - fact_id: F12
     statement: Mara fears forgetting Ivo more than she fears remaining trapped.
     seed_memory_id: seed_12
     category: fear
     contradicted_in_phase: null
+    answer_terms: ['forget']
+    accepted_variants: ['forgetting', 'forgot', 'fear of forgetting']

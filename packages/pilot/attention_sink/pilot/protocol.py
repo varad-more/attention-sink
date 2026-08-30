@@ -3,12 +3,19 @@
 A protocol file is experimental apparatus in the same sense a prompt is: two runs
 whose stimulus decks differ are different experiments, whatever their run identifiers
 say. So each file declares its own version, carries a digest of its own content, and
-moves through exactly three states.
+moves through a lifecycle whose steps say exactly how much a run may claim.
 
-``DRAFT`` may be edited freely and may not be run canonically. ``FROZEN`` carries a
-digest that must still match; a file edited after freezing is detected by recomputing
-it. ``RETIRED`` records a protocol that has been superseded and must not start new
-runs, without deleting what earlier runs executed.
+``DRAFT`` may be edited freely and runs nothing. ``LOCAL_VALIDATED`` carries a digest
+that must still match and may run locally against fixture models; its token budget is
+a local approximation, so its results describe application behaviour and nothing
+else. ``AWS_CALIBRATED`` has had that budget re-derived against the production
+counter. ``FROZEN`` is the canonical protocol and may not be edited at all.
+``RETIRED`` records a protocol that has been superseded and starts no new run,
+without deleting what earlier runs executed.
+
+The pilot reaches ``LOCAL_VALIDATED`` in Phase 4 and no further. Freezing a budget
+denominated in local approximate tokens would make the canonical experiment a
+measurement of the fixture counter (ADR-local-first-pilot, ADR-011).
 
 The digest deliberately covers the *parsed content* rather than the file bytes.
 Reindenting a YAML block or rewrapping a comment leaves a protocol identical in every
@@ -18,6 +25,7 @@ to re-freeze without reading. Changing a word of a stimulus does change it.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from enum import StrEnum
 from pathlib import Path
@@ -31,7 +39,10 @@ from attention_sink.pilot.canonical import canonical_digest
 
 __all__ = [
     "DEFAULT_PROTOCOL_ROOT",
+    "DOCUMENT_PATHS",
     "EXPECTED_SEED_COUNT",
+    "MANIFEST_PATH",
+    "PREDICTIONS_PATH",
     "CitationMode",
     "DreamerSpec",
     "HeavyHitterSpec",
@@ -52,14 +63,19 @@ __all__ = [
     "StimulusSpec",
     "TruthFact",
     "TruthLedger",
+    "build_manifest",
     "document_digest",
-    "freeze_documents",
     "load_bundle",
+    "manifest_drift",
+    "promote_documents",
     "read_document",
+    "read_manifest",
+    "return_to_draft",
     "rewrite_scalars",
+    "write_manifest",
 ]
 
-DEFAULT_PROTOCOL_ROOT = Path("experiments/pilot")
+DEFAULT_PROTOCOL_ROOT = Path("experiment/pilot")
 """Where the protocol files live, relative to the repository root."""
 
 EXPECTED_SEED_COUNT = 12
@@ -80,16 +96,48 @@ class ProtocolError(ValueError):
 
 
 class ProtocolStatus(StrEnum):
-    """Lifecycle of one protocol artefact."""
+    """Lifecycle of one protocol artefact, in the order it advances through it."""
 
     DRAFT = "draft"
-    """Editable. Its digest is not yet meaningful and it cannot run canonically."""
+    """Editable. Its digest is not yet meaningful and it runs nothing."""
+
+    LOCAL_VALIDATED = "local_validated"
+    """Digested, cross-checked, and runnable against fixture models only.
+
+    The budget it carries is a local approximation. Returning a document here to
+    ``DRAFT`` is the only way to edit it, and produces new digests."""
+
+    AWS_CALIBRATED = "aws_calibrated"
+    """The budget has been re-derived against the production token counter.
+
+    Reserved for Phase 8. Nothing in Phases 4-6 writes this status."""
 
     FROZEN = "frozen"
-    """Digested and immutable. Any later edit is detected by recomputation."""
+    """Canonical and immutable. Any later edit is detected by recomputation.
+
+    Reserved for Phase 8, after AWS calibration. A protocol frozen around a local
+    approximate budget would be a canonical experiment about the fixture counter."""
 
     RETIRED = "retired"
     """Superseded. Kept so earlier runs remain readable; starts no new run."""
+
+    @property
+    def is_digested(self) -> bool:
+        """Whether this status asserts that the recorded digest still matches."""
+        return self in _DIGESTED_STATUSES
+
+    @property
+    def runs_locally(self) -> bool:
+        """Whether a document in this status may take part in a fixture run."""
+        return self in _LOCAL_RUNNABLE_STATUSES
+
+
+_DIGESTED_STATUSES = frozenset(
+    {ProtocolStatus.LOCAL_VALIDATED, ProtocolStatus.AWS_CALIBRATED, ProtocolStatus.FROZEN}
+)
+_LOCAL_RUNNABLE_STATUSES = frozenset(
+    {ProtocolStatus.LOCAL_VALIDATED, ProtocolStatus.AWS_CALIBRATED, ProtocolStatus.FROZEN}
+)
 
 
 class Reliability(StrEnum):
@@ -128,9 +176,19 @@ class _Document(BaseModel):
     """Digest of this document's content, excluding this field. Written by freeze."""
 
     @property
+    def is_digested(self) -> bool:
+        """Whether this document claims its recorded digest still matches."""
+        return self.status.is_digested
+
+    @property
     def is_frozen(self) -> bool:
-        """Whether this document may take part in a canonical run."""
+        """Whether this document is the canonical, immutable version."""
         return self.status is ProtocolStatus.FROZEN
+
+    @property
+    def runs_locally(self) -> bool:
+        """Whether this document may take part in a local fixture run."""
+        return self.status.runs_locally
 
 
 # ------------------------------------------------------------------- seed world
@@ -154,8 +212,12 @@ class SeedMemorySpec(BaseModel):
     importance: Literal["critical", "high", "medium", "low"]
     initial_position: int = Field(ge=1)
     entities: tuple[str, ...] = ()
-    token_count: int | None = Field(default=None, ge=1)
-    """Written by calibration, in the tokens of the counter the run is measured by."""
+    provisional_token_count: int | None = Field(default=None, ge=1)
+    """Written by calibration, in the tokens of the counter the run is measured by.
+
+    Named provisional because in Phases 4-6 that counter is the deterministic local
+    heuristic, not the production model's tokeniser. The number is exact for what it
+    measures and an approximation of what will eventually matter."""
 
     pinned_eligible: bool = False
     content_hash: str = ""
@@ -193,7 +255,7 @@ class SeedWorld(_Document):
     def is_calibrated(self) -> bool:
         """Whether every card carries a token count and the counter that produced it."""
         return self.counter_version is not None and all(
-            memory.token_count is not None for memory in self.memories
+            memory.provisional_token_count is not None for memory in self.memories
         )
 
     @property
@@ -206,7 +268,7 @@ class SeedWorld(_Document):
         if not self.is_calibrated:
             msg = f"seed world {self.seed_world_version} has not been calibrated"
             raise ProtocolError(msg)
-        return sum(memory.token_count or 0 for memory in self.memories)
+        return sum(memory.provisional_token_count or 0 for memory in self.memories)
 
 
 # --------------------------------------------------------------- stimulus deck
@@ -282,6 +344,25 @@ class TruthFact(BaseModel):
     seed_memory_id: SeedId
     category: str = Field(min_length=1, max_length=64)
     contradicted_in_phase: str | None = None
+
+    answer_terms: tuple[str, ...] = ()
+    """Terms an answer must contain, normalised, for this fact to count as recalled.
+
+    Scoring apparatus, held here rather than on the question, because what makes an
+    answer right is a property of the fact. Never rendered into a prompt: a writer
+    told which words score would write those words."""
+
+    accepted_variants: tuple[str, ...] = ()
+    """Alternative surface forms that satisfy an ``answer_terms`` entry.
+
+    Configured rather than inferred. A scorer that guessed at synonyms would be a
+    second, unversioned judgement inside a metric that claims to be deterministic."""
+
+    evaluator_fallback: bool = False
+    """Whether an unmatched answer for this fact is ambiguous enough to ask a model.
+
+    False for almost every fact. A name is recalled or it is not, and sending that to
+    an evaluator would replace an exact answer with an opinion."""
 
 
 class TruthLedger(_Document):
@@ -444,12 +525,17 @@ class PilotProtocol(_Document):
     truth_ledger_version: Version
     interview_version: Version
 
-    max_cycles: int = Field(gt=0)
+    maximum_cycles: int = Field(gt=0)
     checkpoint_cycles: tuple[int, ...] = Field(min_length=1)
     arms: tuple[ArmId, ...] = Field(min_length=1)
 
     memory_budget_tokens: int | None = Field(default=None, gt=0)
     counter_version: Version | None = None
+    token_count_source: str = Field(default="local_fixture_heuristic", min_length=1, max_length=64)
+    """What produced the counts the budget is denominated in.
+
+    Recorded rather than inferred, so a manifest never leaves a reader guessing
+    whether a budget came from the local heuristic or from Bedrock ``CountTokens``."""
 
     writer_prompt_version: Version
     summary_prompt_version: Version
@@ -464,9 +550,9 @@ class PilotProtocol(_Document):
         if len(set(self.arms)) != len(self.arms):
             msg = "a protocol cannot configure the same arm twice"
             raise ValueError(msg)
-        outside = [c for c in self.checkpoint_cycles if c < 0 or c > self.max_cycles]
+        outside = [c for c in self.checkpoint_cycles if c < 0 or c > self.maximum_cycles]
         if outside:
-            msg = f"checkpoint cycles outside 0..{self.max_cycles}: {outside}"
+            msg = f"checkpoint cycles outside 0..{self.maximum_cycles}: {outside}"
             raise ValueError(msg)
         if sorted(self.checkpoint_cycles) != list(self.checkpoint_cycles):
             msg = f"checkpoint cycles must be ascending, got {list(self.checkpoint_cycles)}"
@@ -556,43 +642,62 @@ class ProtocolBundle(BaseModel):
         return tuple(zip(self.paths, self.documents, strict=True))
 
     @property
+    def is_local_validated(self) -> bool:
+        """Whether every document has been digested and may run locally."""
+        return all(document.runs_locally for document in self.documents)
+
+    @property
     def is_frozen(self) -> bool:
-        """Whether every document is frozen and may run canonically."""
+        """Whether every document is the canonical, immutable version."""
         return all(document.is_frozen for document in self.documents)
 
     def drifted(self) -> tuple[str, ...]:
         """Files whose stored digest no longer matches their content.
 
-        Only frozen files are checked. A draft's digest is not a claim about anything
-        yet, and reporting drift on one would make the signal useless.
+        Only digested files are checked. A draft's digest is not a claim about
+        anything yet, and reporting drift on one would make the signal useless.
         """
         return tuple(
             sorted(
                 name
                 for name, document in self.named_documents
-                if document.is_frozen and document.content_hash != self.digests[name]
+                if document.is_digested and document.content_hash != self.digests[name]
             )
         )
 
-    def require_runnable(self) -> None:
-        """Refuse a bundle that is not frozen, undrifted, and calibrated.
+    def require_runnable(self, *, canonical: bool = False) -> None:
+        """Refuse a bundle that is not validated, undrifted, and calibrated.
+
+        A local fixture run needs ``LOCAL_VALIDATED`` or better. A canonical run
+        needs ``FROZEN``, which nothing in Phases 4-6 produces -- so asking for one
+        here is refused by the status check rather than by a comment.
 
         Raises:
-            ProtocolError: A document is still a draft or has been retired, a frozen
-                file has been edited since, or the budget was never calibrated.
+            ProtocolError: A document is still a draft or has been retired, a
+                digested file has been edited since, or the budget was never
+                calibrated.
         """
-        unfrozen = sorted(name for name, doc in self.named_documents if not doc.is_frozen)
-        if unfrozen:
+        if canonical:
+            unfrozen = sorted(name for name, doc in self.named_documents if not doc.is_frozen)
+            if unfrozen:
+                msg = (
+                    f"refusing to run a canonical pilot from files that are not frozen: "
+                    f"{', '.join(unfrozen)}. A protocol is frozen only after AWS token "
+                    f"calibration in Phase 8."
+                )
+                raise ProtocolError(msg)
+        unvalidated = sorted(name for name, doc in self.named_documents if not doc.runs_locally)
+        if unvalidated:
             msg = (
-                f"refusing to run a canonical pilot from files that are not frozen: "
-                f"{', '.join(unfrozen)}. Run `make pilot-freeze` first."
+                f"refusing to run a pilot from files that are not validated: "
+                f"{', '.join(unvalidated)}. Run `make pilot-local-validate` first."
             )
             raise ProtocolError(msg)
         drifted = self.drifted()
         if drifted:
             msg = (
-                f"protocol files were modified after freezing: {', '.join(drifted)}. "
-                f"Re-freeze deliberately, or restore them."
+                f"protocol files were modified after validation: {', '.join(drifted)}. "
+                f"Return them to draft and re-validate deliberately, or restore them."
             )
             raise ProtocolError(msg)
         if not self.protocol.is_calibrated:
@@ -603,15 +708,20 @@ class ProtocolBundle(BaseModel):
             raise ProtocolError(msg)
 
 
-def _paths_for(protocol_version: str, world: str) -> tuple[str, ...]:
-    """The five files a protocol version and its seed world resolve to, in order."""
-    return (
-        f"protocols/{protocol_version}.yaml",
-        f"seed-worlds/{world}.yaml",
-        f"stimulus-decks/{world}.yaml",
-        f"truth-ledgers/{world}.yaml",
-        f"interviews/{protocol_version}.yaml",
-    )
+DOCUMENT_PATHS: tuple[str, ...] = (
+    "protocol.yaml",
+    "seed_memories.yaml",
+    "stimuli.yaml",
+    "truth_ledger.yaml",
+    "interview_questions.yaml",
+)
+"""The five machine-readable files, in :attr:`ProtocolBundle.documents` order."""
+
+MANIFEST_PATH = "manifest.json"
+"""Where the digest of every protocol file is recorded, beside the files themselves."""
+
+PREDICTIONS_PATH = "predictions.md"
+"""Registered predictions. Prose, so it is manifested but not schema-validated."""
 
 
 def load_bundle(
@@ -623,11 +733,16 @@ def load_bundle(
         ProtocolError: A file is missing or malformed, a declared version does not
             match the file that declares it, or two files disagree.
     """
-    protocol_path = root / "protocols" / f"{protocol_version}.yaml"
-    raw_protocol = read_document(protocol_path)
-    protocol = _validate(PilotProtocol, raw_protocol, protocol_path)
+    paths = DOCUMENT_PATHS
+    protocol_path = root / paths[0]
+    protocol = _validate(PilotProtocol, read_document(protocol_path), protocol_path)
+    if protocol.protocol_version != protocol_version:
+        msg = (
+            f"{protocol_path} declares protocol version {protocol.protocol_version!r}, "
+            f"not the requested {protocol_version!r}"
+        )
+        raise ProtocolError(msg)
 
-    paths = _paths_for(protocol_version, protocol.seed_world_version)
     raws = {name: read_document(root / name) for name in paths}
     bundle = ProtocolBundle(
         root=root,
@@ -721,14 +836,14 @@ def _cross_check(bundle: ProtocolBundle) -> None:
             f"the seed world holds {len(bundle.seed_world.memories)} memories; "
             f"Station Kestrel is defined as {EXPECTED_SEED_COUNT}"
         )
-    if len(bundle.stimulus_deck.stimuli) != protocol.max_cycles:
+    if len(bundle.stimulus_deck.stimuli) != protocol.maximum_cycles:
         problems.append(
             f"the deck holds {len(bundle.stimulus_deck.stimuli)} stimuli but the "
-            f"protocol runs {protocol.max_cycles} cycles"
+            f"protocol runs {protocol.maximum_cycles} cycles"
         )
-    if protocol.max_cycles not in protocol.checkpoint_cycles:
+    if protocol.maximum_cycles not in protocol.checkpoint_cycles:
         problems.append(
-            f"the final cycle {protocol.max_cycles} is not a checkpoint; the "
+            f"the final cycle {protocol.maximum_cycles} is not a checkpoint; the "
             f"autobiography would never be interviewed"
         )
 
@@ -764,34 +879,152 @@ def rewrite_scalars(path: Path, fields: Mapping[str, str]) -> None:
     path.write_text("".join(lines), encoding="utf-8")
 
 
-def freeze_documents(bundle: ProtocolBundle) -> tuple[str, ...]:
-    """Write each document's digest into itself and mark it frozen.
+def promote_documents(
+    bundle: ProtocolBundle, status: ProtocolStatus = ProtocolStatus.LOCAL_VALIDATED
+) -> tuple[str, ...]:
+    """Write each document's digest into itself and advance it to ``status``.
 
     The digest is computed over the content the file will have *after* the status
-    change, so a frozen file's recorded digest matches what a later verification
-    recomputes. Files already frozen and undrifted are left alone and not reported.
+    change, so a validated file's recorded digest matches what a later verification
+    recomputes. Files already at ``status`` and undrifted are left alone.
 
     Returns:
         The paths that were rewritten.
 
     Raises:
-        ProtocolError: The protocol or the seed world has not been calibrated.
+        ProtocolError: The protocol or the seed world has not been calibrated, or
+            ``status`` is one this phase must not write.
     """
+    if status not in _LOCAL_RUNNABLE_STATUSES:
+        msg = f"{status.value} is not a status a document can be promoted to"
+        raise ProtocolError(msg)
+    if status is not ProtocolStatus.LOCAL_VALIDATED:
+        msg = (
+            f"refusing to write status {status.value}: a pilot protocol advances past "
+            f"local validation only at AWS token calibration in Phase 8"
+        )
+        raise ProtocolError(msg)
     if not bundle.protocol.is_calibrated or not bundle.seed_world.is_calibrated:
         msg = (
-            "refusing to freeze an uncalibrated protocol: the active-memory budget is "
-            "still unset. Run `make pilot-calibrate` first."
+            "refusing to validate an uncalibrated protocol: the active-memory budget "
+            "is still unset. Run `make pilot-calibrate` first."
         )
         raise ProtocolError(msg)
 
     written: list[str] = []
-    frozen_status = ProtocolStatus.FROZEN.value
+    target = status.value
     for name in bundle.paths:
         path = bundle.root / name
         data = read_document(path)
-        digest = document_digest({**data, "status": frozen_status})
-        if data.get("status") == frozen_status and data.get("content_hash") == digest:
+        digest = document_digest({**data, "status": target})
+        if data.get("status") == target and data.get("content_hash") == digest:
             continue
-        rewrite_scalars(path, {"status": frozen_status, "content_hash": f"'{digest}'"})
+        rewrite_scalars(path, {"status": target, "content_hash": f"'{digest}'"})
         written.append(name)
     return tuple(written)
+
+
+def return_to_draft(bundle: ProtocolBundle) -> tuple[str, ...]:
+    """Return every document to ``DRAFT`` so it may be edited again.
+
+    The only supported way to change a validated protocol. Editing one in place would
+    leave a file whose recorded digest is a claim about content it no longer has,
+    which is exactly the state drift detection exists to make loud.
+
+    Returns:
+        The paths that were rewritten.
+    """
+    written: list[str] = []
+    draft = ProtocolStatus.DRAFT.value
+    for name in bundle.paths:
+        path = bundle.root / name
+        if read_document(path).get("status") == draft:
+            continue
+        rewrite_scalars(path, {"status": draft, "content_hash": "''"})
+        written.append(name)
+    return tuple(written)
+
+
+def build_manifest(bundle: ProtocolBundle, *, prompt_hashes: Mapping[str, str]) -> dict[str, Any]:
+    """The digest of everything one run's protocol is made of, in one document.
+
+    Covers the prose file as well as the five schema-validated ones, and the prompt
+    templates besides. A reader holding a manifest and a run's snapshots can decide
+    whether the two describe the same experiment without parsing either.
+    """
+    files = {name: bundle.digests[name] for name in bundle.paths}
+    predictions = bundle.root / PREDICTIONS_PATH
+    if predictions.is_file():
+        files[PREDICTIONS_PATH] = content_hash(predictions.read_text(encoding="utf-8"))
+    return {
+        "schema_version": 1,
+        "protocol_version": str(bundle.protocol.protocol_version),
+        "status": bundle.protocol.status.value,
+        "title": bundle.protocol.title,
+        "description": bundle.protocol.description,
+        "token_count_source": bundle.protocol.token_count_source,
+        "memory_budget_tokens": bundle.protocol.memory_budget_tokens,
+        "counter_version": (
+            None
+            if bundle.protocol.counter_version is None
+            else str(bundle.protocol.counter_version)
+        ),
+        "files": dict(sorted(files.items())),
+        "prompt_hashes": dict(sorted(prompt_hashes.items())),
+    }
+
+
+def write_manifest(bundle: ProtocolBundle, *, prompt_hashes: Mapping[str, str]) -> Path:
+    """Write :func:`build_manifest` beside the protocol, canonically serialised.
+
+    Returns:
+        The path written.
+    """
+    manifest = build_manifest(bundle, prompt_hashes=prompt_hashes)
+    manifest["content_hash"] = canonical_digest(manifest)
+    path = bundle.root / MANIFEST_PATH
+    path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return path
+
+
+def read_manifest(root: Path = DEFAULT_PROTOCOL_ROOT) -> dict[str, Any]:
+    """Load the recorded manifest.
+
+    Raises:
+        ProtocolError: The manifest is missing or is not a JSON object.
+    """
+    path = root / MANIFEST_PATH
+    if not path.is_file():
+        msg = f"no protocol manifest at {path}; run `make pilot-local-validate`"
+        raise ProtocolError(msg)
+    loaded = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(loaded, dict):
+        msg = f"{path} must contain a JSON object"
+        raise ProtocolError(msg)
+    return loaded
+
+
+def manifest_drift(bundle: ProtocolBundle, *, prompt_hashes: Mapping[str, str]) -> tuple[str, ...]:
+    """Every file whose digest disagrees with the recorded manifest.
+
+    Reported per file rather than as one manifest-level mismatch, because "the
+    manifest does not match" tells nobody which stimulus was edited.
+
+    Raises:
+        ProtocolError: The manifest is missing or malformed.
+    """
+    recorded = read_manifest(bundle.root)
+    expected = build_manifest(bundle, prompt_hashes=prompt_hashes)
+    stored_files = recorded.get("files")
+    if not isinstance(stored_files, dict):
+        msg = f"{bundle.root / MANIFEST_PATH} records no file digests"
+        raise ProtocolError(msg)
+    problems = [
+        name for name, digest in expected["files"].items() if stored_files.get(name) != digest
+    ]
+    problems += [
+        f"{name} (not in manifest)" for name in stored_files if name not in expected["files"]
+    ]
+    if recorded.get("prompt_hashes") != expected["prompt_hashes"]:
+        problems.append("prompt templates")
+    return tuple(sorted(problems))

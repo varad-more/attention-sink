@@ -9,3 +9,7 @@ uv.lock
 # Generated pilot run exports. Immutable output with its own checksum manifest;
 # reformatting them would break the checksums they ship with.
 .pilot-runs/
+
+# Generated knowledge-graph artifacts. Rebuilt by `/graphify`.
+graphify-out/
+.pilot-local/

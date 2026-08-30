@@ -21,14 +21,16 @@ from typing import Any
 
 from attention_sink.pilot.canonical import canonical_json
 from attention_sink.pilot.engine import CheckpointRecord
-from attention_sink.pilot.protocol import ProtocolBundle
+from attention_sink.pilot.protocol import MANIFEST_PATH, PREDICTIONS_PATH, ProtocolBundle
 from attention_sink.pilot.snapshots import ArmCycleSnapshot, RunSnapshot
 
 __all__ = ["EXPORT_FILES", "ExportResult", "checksum_lines", "export_run"]
 
 SIMULATED_NOTICE = (
-    "SIMULATED RUN. Every generation in this directory was produced by a deterministic "
-    "local fixture, not by a model. No figure here is a result."
+    "SIMULATED - LOCAL - NON-CANONICAL. Every generation in this directory was produced "
+    "by a deterministic local fixture, not by a model, and the token budget it was run "
+    "under is a local approximation. Nothing here is scientific evidence about the "
+    "configured production model."
 )
 
 EXPORT_FILES = (
@@ -101,6 +103,9 @@ def export_run(
     simulated = run.configuration.simulated
     manifest: dict[str, Any] = {
         "schema_version": 1,
+        "run_kind": run.configuration.run_kind.value,
+        "canonical": run.configuration.canonical,
+        "token_count_source": run.configuration.token_count_source,
         "simulated": simulated,
         "notice": SIMULATED_NOTICE if simulated else "",
         "run": run.model_dump(mode="json"),
@@ -135,14 +140,14 @@ def export_run(
     )
 
     protocol_copies: list[str] = []
-    for name in bundle.paths:
+    copied = (*bundle.paths, *(n for n in (MANIFEST_PATH,) if (bundle.root / n).is_file()))
+    for name in copied:
         target = directory / "protocol" / name
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(bundle.root / name, target)
         protocol_copies.append(f"protocol/{name}")
 
-    predictions = bundle.root / "predictions" / f"{bundle.protocol.protocol_version}.md"
-    shutil.copyfile(predictions, directory / "predictions.md")
+    shutil.copyfile(bundle.root / PREDICTIONS_PATH, directory / "predictions.md")
 
     files = (*EXPORT_FILES, *protocol_copies)
     _write(directory / "checksums.sha256", checksum_lines(directory, files))

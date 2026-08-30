@@ -38,7 +38,7 @@ from attention_sink.domain import (
 from attention_sink.model_gateway import CallMetadata
 from attention_sink.pilot.budget import ModelUsage
 from attention_sink.pilot.canonical import canonical_digest
-from attention_sink.pilot.configuration import PilotRunConfiguration
+from attention_sink.pilot.configuration import PilotRunConfiguration, RunKind
 
 __all__ = [
     "CLAIMED_VALIDATOR_VERSION",
@@ -172,6 +172,13 @@ class ArmCycleSnapshot(BaseModel):
 
     schema_version: Literal[1] = 1
     run_id: RunId
+    run_kind: RunKind
+    """What this record is allowed to be presented as.
+
+    Stored on the snapshot itself, not only on the run it belongs to. A snapshot
+    travels -- into an export, into a fixture, into a screenshot -- and one that
+    arrives without its provenance is one somebody will read as a result."""
+
     arm_id: ArmId
     cycle: CycleNumber
     stimulus: StimulusRecord
@@ -212,7 +219,10 @@ class ArmCycleSnapshot(BaseModel):
     state_hash: str = Field(min_length=1)
 
     model_metadata: tuple[CallMetadata, ...] = ()
+    """Every model call this arm-cycle made, writer first, then any Dreamer call."""
+
     policy_version: Version
+    prompt_versions: dict[str, str] = Field(default_factory=dict)
     prompt_hashes: dict[str, str] = Field(default_factory=dict)
     simulated: bool
     completed_at: UtcTimestamp
@@ -305,10 +315,10 @@ class RunSnapshot(BaseModel):
                 f"{sorted(configured)}"
             )
             raise ValueError(msg)
-        if self.current_cycle > self.configuration.max_cycles:
+        if self.current_cycle > self.configuration.maximum_cycles:
             msg = (
                 f"run is at cycle {self.current_cycle}, past the configured "
-                f"{self.configuration.max_cycles}"
+                f"{self.configuration.maximum_cycles}"
             )
             raise ValueError(msg)
         return self

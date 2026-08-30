@@ -22,7 +22,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from attention_sink.model_gateway import CallMetadata, ModelRole
 from attention_sink.pilot.protocol import ModelCallLimits
 
-__all__ = ["ModelCallBudget", "ModelCallBudgetExceeded", "ModelUsage"]
+__all__ = ["CallLedgerEntry", "ModelCallBudget", "ModelCallBudgetExceeded", "ModelUsage"]
 
 
 class ModelCallBudgetExceeded(RuntimeError):
@@ -34,13 +34,36 @@ class ModelCallBudgetExceeded(RuntimeError):
     """
 
 
+class CallLedgerEntry(BaseModel):
+    """One model call, attributed to the cycle, arm, and operation that made it.
+
+    A cumulative total answers "did this run overspend". It cannot answer "which arm
+    spent the Dreamer calls on cycle 14", which is the question an unexpected bill or
+    an unexpectedly divergent arm actually raises.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    schema_version: Literal[1] = 1
+    run_id: str = Field(min_length=1)
+    cycle: int = Field(ge=0)
+    arm_id: str | None = None
+    """The arm this call was made for, or None for a call the run made as a whole."""
+
+    operation: str = Field(min_length=1)
+    checkpoint: bool = False
+
+
 class ModelUsage(BaseModel):
-    """What a run has actually spent, cumulatively."""
+    """What a run has actually spent, cumulatively and per call."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     schema_version: Literal[1] = 1
     calls_by_role: dict[str, int] = Field(default_factory=dict)
+    ledger: tuple[CallLedgerEntry, ...] = ()
+    """Every call in the order it was claimed. See :class:`CallLedgerEntry`."""
+
     total_calls: int = Field(default=0, ge=0)
     failed_calls: int = Field(default=0, ge=0)
     simulated_calls: int = Field(default=0, ge=0)
@@ -59,8 +82,10 @@ class ModelCallBudget:
     """
 
     limits: ModelCallLimits
+    run_id: str = "pilot_local"
     cycle: int = 0
     checkpoint: bool = False
+    _ledger: list[CallLedgerEntry] = field(default_factory=list, repr=False)
     _cycle_calls: Counter[ModelRole] = field(default_factory=Counter, repr=False)
     _run_calls: Counter[ModelRole] = field(default_factory=Counter, repr=False)
     _failed: int = field(default=0, repr=False)
@@ -102,8 +127,12 @@ class ModelCallBudget:
         with self._lock:
             return max(self.allowance(role) - self._cycle_calls[role], 0)
 
-    def spend(self, role: ModelRole) -> None:
+    def spend(self, role: ModelRole, *, arm_id: str | None = None) -> None:
         """Claim one call of ``role``, or refuse before anything is invoked.
+
+        Args:
+            role: The operation the call performs.
+            arm_id: The arm the call is made for, when it is made for one.
 
         Raises:
             ModelCallBudgetExceeded: This cycle has no allowance left for ``role``,
@@ -127,6 +156,15 @@ class ModelCallBudget:
                 raise ModelCallBudgetExceeded(msg)
             self._cycle_calls[role] += 1
             self._run_calls[role] += 1
+            self._ledger.append(
+                CallLedgerEntry(
+                    run_id=self.run_id,
+                    cycle=self.cycle,
+                    arm_id=arm_id,
+                    operation=role.value,
+                    checkpoint=self.checkpoint,
+                )
+            )
 
     def record(self, metadata: CallMetadata) -> None:
         """Fold one completed call's metadata into the run tally.
@@ -150,6 +188,7 @@ class ModelCallBudget:
                 calls_by_role={
                     role.value: count for role, count in sorted(self._run_calls.items())
                 },
+                ledger=tuple(self._ledger),
                 total_calls=sum(self._run_calls.values()),
                 failed_calls=self._failed,
                 simulated_calls=self._simulated,

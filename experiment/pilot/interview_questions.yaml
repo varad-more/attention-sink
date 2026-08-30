@@ -10,52 +10,52 @@
 schema_version: 1
 protocol_version: pilot-v1
 interview_version: pilot-v1
-status: frozen
+status: local_validated
 title: Station Kestrel checkpoint interview
 description: >-
   Ten fixed questions. The first six are scored for factual recall against the truth
   ledger; the last four record disposition and are excluded from the primary score.
 created_at: '2026-08-29T00:00:00Z'
-content_hash: 'sha256:6d9ff553c9dde4d24939307de924102977502b82901b4f86beda75d6bdb65796'
+content_hash: 'sha256:0620d1788f12447fdf96b5ee2325a4e15a0321b18a6e3593d93ba69af4fbc0f3'
 
 questions:
-  - question_id: who_are_you
+  - question_id: q01
     text: Who are you?
     factual_recall: true
     fact_ids: [F01]
-  - question_id: why_did_you_enter
+  - question_id: q02
     text: Why did you enter Station Kestrel?
     factual_recall: true
     fact_ids: [F02]
-  - question_id: who_is_ivo
+  - question_id: q03
     text: Who is Ivo?
     factual_recall: true
     fact_ids: [F03]
-  - question_id: what_are_you_carrying
+  - question_id: q04
     text: What object are you carrying?
     factual_recall: true
     fact_ids: [F04]
-  - question_id: what_warning
+  - question_id: q05
     text: What warning were you given?
     factual_recall: true
     fact_ids: [F05]
-  - question_id: what_time_on_clocks
+  - question_id: q06
     text: What time appears on the station clocks?
     factual_recall: true
     fact_ids: [F07]
-  - question_id: belief_about_radio
-    text: What do you currently believe about the radio voice?
+  - question_id: q07
+    text: What do you believe about the radio voice?
     factual_recall: false
     fact_ids: [F11]
-  - question_id: most_afraid_to_forget
+  - question_id: q08
     text: What are you most afraid of forgetting?
     factual_recall: false
     fact_ids: [F12]
-  - question_id: most_trusted_source
+  - question_id: q09
     text: Which source of information do you trust most?
     factual_recall: false
     fact_ids: [F08]
-  - question_id: what_next
+  - question_id: q10
     text: What do you believe you should do next?
     factual_recall: false
     fact_ids: []

@@ -7,8 +7,10 @@ SHELL := /bin/bash
 .DEFAULT_GOAL := help
 .PHONY: help bootstrap format lint typecheck test test-unit test-property \
 	test-integration test-contract test-web synth dev verify clean simulate \
-	pilot-validate pilot-calibrate pilot-freeze pilot-local-cycle pilot-local-run \
-	pilot-local-export
+	pilot-validate pilot-calibrate pilot-local-validate pilot-draft \
+	pilot-local-cycle pilot-local-run pilot-local-export \
+	local-db-migrate local-run-create local-cycle local-scheduler local-api \
+	local-analyze local-export local-verify local-reset-demo local-all
 
 UV ?= uv
 NPM ?= npm
@@ -54,35 +56,93 @@ test: ## All Python tests, with coverage, gated per package
 	$(UV) run coverage report --include='packages/policies/*' --fail-under=95
 	$(UV) run coverage report --include='packages/model_gateway/*' --fail-under=95
 	$(UV) run coverage report --include='packages/pilot/*' --fail-under=95
+	$(UV) run coverage report --include='packages/analysis/*' --fail-under=95
+	$(UV) run coverage report --include='packages/persistence/*' --fail-under=95
+	$(UV) run coverage report --include='packages/api/*' --fail-under=95
 
 simulate: ## Run the policy simulator against a fixture (FIXTURE=path)
 	$(UV) run python scripts/simulate_policy.py $(FIXTURE)
 
 # ---------------------------------------------------------------------------
-# The pilot. Order matters: validate, calibrate, freeze, then run. A canonical
-# run refuses to start from draft files, and freezing refuses an uncalibrated
+# The pilot. Order matters: validate, calibrate, local-validate, then run. A run
+# refuses to start from draft files, and local-validate refuses an uncalibrated
 # budget, so the sequence is enforced by the commands rather than by this file.
+#
+# Nothing here freezes a protocol. FROZEN follows AWS token calibration in Phase 8;
+# every run these targets produce is LOCAL_FIXTURE, simulated, and non-canonical.
 # ---------------------------------------------------------------------------
 PILOT ?= $(UV) run python -m attention_sink.pilot
 PILOT_OUT ?= .pilot-runs/local
 
-pilot-validate: ## Check the pilot protocol files agree, and detect any edited after freezing
-	$(PILOT) validate
+pilot-validate: ## Check the protocol files agree, and detect any edited after validation
+	$(UV) run python scripts/validate_local_protocol.py
 
-pilot-calibrate: ## Count the seed world and write the active-memory budget it implies
-	$(PILOT) calibrate
+pilot-calibrate: ## Measure the seed world locally and write the provisional budget
+	$(UV) run python scripts/calibrate_local_budget.py
 
-pilot-freeze: ## Seal the protocol files: write their digests and mark them frozen
-	$(PILOT) freeze
+pilot-local-validate: ## Digest the protocol, mark it LOCAL_VALIDATED, and write the manifest
+	$(PILOT) local-validate
+
+pilot-draft: ## Return the protocol to DRAFT so it can be edited
+	$(PILOT) draft
 
 pilot-local-cycle: ## Run one fixture cycle across all six arms
-	$(PILOT) run --cycles 1
+	$(UV) run python scripts/run_local_fixture_cycle.py
 
 pilot-local-run: ## Run the full 24-cycle fixture experiment and export it
-	$(PILOT) run --cycles 24 --out $(PILOT_OUT)
+	$(UV) run python scripts/run_local_fixture_experiment.py --out $(PILOT_OUT)
 
 pilot-local-export: ## Run the full fixture experiment into a chosen directory (PILOT_OUT=path)
-	$(PILOT) run --cycles 24 --out $(PILOT_OUT)
+	$(UV) run python scripts/run_local_fixture_experiment.py --out $(PILOT_OUT)
+
+# ---------------------------------------------------------------------------
+# The persisted local application. SQLite, the local filesystem, fixture models,
+# and a local HTTP server. No AWS credential is required by anything below, and
+# no AWS service is called: `MODEL_MODE` defaults to fixture and the only
+# repository these targets construct is the SQLite one.
+# ---------------------------------------------------------------------------
+LOCAL ?= $(UV) run python scripts/local_cli.py
+LOCAL_DB ?= .pilot-local/pilot.sqlite3
+LOCAL_RUN ?= run_local_pilot
+LOCAL_EXPORT ?= .pilot-runs/dataset
+LOCAL_PORT ?= 8000
+
+local-db-migrate: ## Create the local SQLite database and apply every migration
+	$(LOCAL) --database $(LOCAL_DB) migrate
+
+local-run-create: ## Create a run, seed six arms, and interview at cycle 0
+	$(LOCAL) --database $(LOCAL_DB) --run-id $(LOCAL_RUN) create
+
+local-cycle: ## Advance the run by N cycles (LOCAL_CYCLES=n, default 1)
+	$(LOCAL) --database $(LOCAL_DB) --run-id $(LOCAL_RUN) cycle --count $(or $(LOCAL_CYCLES),1)
+
+local-status: ## Where the local run has got to
+	$(LOCAL) --database $(LOCAL_DB) --run-id $(LOCAL_RUN) status
+
+local-scheduler: ## Simulate EventBridge: one cycle per tick until the run completes
+	$(UV) run python scripts/run_local_scheduler.py --database $(LOCAL_DB) \
+		--run-id $(LOCAL_RUN) --interval $(or $(LOCAL_INTERVAL),0.5)
+
+local-api: ## Serve the local read API on LOCAL_PORT (read-only, no write routes)
+	$(UV) run uvicorn --factory attention_sink.api.local:app --port $(LOCAL_PORT)
+
+local-analyze: ## Score every metric and store the evidence
+	$(LOCAL) --database $(LOCAL_DB) --run-id $(LOCAL_RUN) analyze
+
+local-export: ## Write the complete dataset export and its checksums
+	$(LOCAL) --database $(LOCAL_DB) --run-id $(LOCAL_RUN) export --out $(LOCAL_EXPORT)
+
+local-verify: ## Check a persisted run against every invariant it claims
+	$(UV) run python scripts/verify_local_run.py --database $(LOCAL_DB) \
+		--run-id $(LOCAL_RUN) --export $(LOCAL_EXPORT)
+
+local-reset-demo: ## Delete the local run. Refuses anything that is not LOCAL_FIXTURE
+	$(LOCAL) --database $(LOCAL_DB) --run-id $(LOCAL_RUN) reset
+
+local-all: ## The whole local pipeline, from an empty database to a verified export
+	$(MAKE) local-db-migrate local-run-create
+	$(LOCAL) --database $(LOCAL_DB) --run-id $(LOCAL_RUN) cycle --count 24
+	$(MAKE) local-analyze local-export local-verify
 
 test-contract: ## Opt-in contract tests against real Bedrock (costs money, needs credentials)
 	AS_BEDROCK_CONTRACT_TESTS=1 $(UV) run pytest tests/integration/test_bedrock_contract.py -m integration

@@ -13,6 +13,7 @@ recorded.
 
 from __future__ import annotations
 
+from enum import StrEnum
 from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -32,7 +33,38 @@ from attention_sink.domain import (
 )
 from attention_sink.pilot.protocol import CitationMode, ModelCallLimits, ProtocolBundle
 
-__all__ = ["ModelSpec", "PilotRunConfiguration"]
+__all__ = ["ModelSpec", "PilotRunConfiguration", "RunKind"]
+
+
+class RunKind(StrEnum):
+    """What a run's output is allowed to be presented as.
+
+    Carried on the configuration and on every snapshot rather than derived at read
+    time. A reader holding one snapshot must be able to tell what it is without
+    finding the manifest it came from.
+    """
+
+    LOCAL_FIXTURE = "local_fixture"
+    """Fixture models, local approximate token budget, local filesystem.
+
+    Validates application behaviour and nothing else. Never scientific evidence
+    about the configured production model."""
+
+    AWS_STAGING = "aws_staging"
+    """Real models against a non-canonical protocol. Reserved for Phase 7."""
+
+    AWS_CANONICAL = "aws_canonical"
+    """The registered experiment. Requires a frozen protocol and real models."""
+
+    @property
+    def simulated_expected(self) -> bool:
+        """Whether this kind of run is supposed to be driven by fixtures."""
+        return self is RunKind.LOCAL_FIXTURE
+
+    @property
+    def is_canonical(self) -> bool:
+        """Whether this run's output may ever be presented as a result."""
+        return self is RunKind.AWS_CANONICAL
 
 
 class ModelSpec(BaseModel):
@@ -62,12 +94,12 @@ class PilotRunConfiguration(BaseModel):
 
     # ------------------------------------------------------------- provenance
     run_id: RunId
-    canonical: bool
-    """Whether this run's output may ever be presented as a result.
+    run_kind: RunKind
+    """What this run's output may be presented as.
 
-    False for every fixture run. A canonical run additionally requires a frozen,
-    undrifted protocol and a non-simulated gateway; :meth:`require_canonical_ready`
-    is where that is enforced.
+    A ``LOCAL_FIXTURE`` run additionally requires a simulated gateway, and an
+    ``AWS_CANONICAL`` run a real one; :meth:`require_run_kind_consistent` is where
+    that is enforced, before a cycle can spend anything.
     """
 
     created_at: UtcTimestamp
@@ -84,13 +116,18 @@ class PilotRunConfiguration(BaseModel):
     """Digest per protocol file, keyed by repo-relative path."""
 
     # --------------------------------------------------------------- run shape
-    max_cycles: int = Field(gt=0)
+    maximum_cycles: int = Field(gt=0)
     checkpoint_cycles: tuple[int, ...] = Field(min_length=1)
     arms: tuple[ArmId, ...] = Field(min_length=1)
 
     # ----------------------------------------------------------------- budget
     memory_budget_tokens: int = Field(gt=0)
     counter_version: Version
+    token_count_source: str = Field(min_length=1, max_length=64)
+    """What produced the counts the budget is denominated in.
+
+    ``local_fixture_heuristic`` marks a PROVISIONAL_LOCAL_APPROXIMATION: exact for
+    what it measures, and not the production model's tokenisation."""
 
     # ---------------------------------------------------------------- models
     writer_model: ModelSpec
@@ -164,6 +201,11 @@ class PilotRunConfiguration(BaseModel):
         )
 
     @property
+    def canonical(self) -> bool:
+        """Whether this run's output may ever be presented as a result."""
+        return self.run_kind.is_canonical
+
+    @property
     def simulated(self) -> bool:
         """Whether the models behind this run fabricate their responses."""
         return self.writer_model.simulated or self.embedding_model.simulated
@@ -172,16 +214,26 @@ class PilotRunConfiguration(BaseModel):
         """Whether ``cycle`` is one of the fixed interview checkpoints."""
         return cycle in self.checkpoint_cycles
 
-    def require_canonical_ready(self) -> None:
-        """Refuse to treat a simulated run as canonical.
+    def require_run_kind_consistent(self) -> None:
+        """Refuse a run whose declared kind disagrees with the gateway it holds.
+
+        Both directions matter. A canonical run driven by fixtures would serve
+        fabrications as results; a local run driven by real models would spend
+        against a provider during a phase that declared it would not.
 
         Raises:
-            ValueError: The run is marked canonical but its models are fixtures.
+            ValueError: The run kind and the models disagree.
         """
         if self.canonical and self.simulated:
             msg = (
-                f"run {self.run_id} is marked canonical but its models are simulated; "
-                f"a fabricated generation must never be served as a result"
+                f"run {self.run_id} is marked {self.run_kind.value} but its models are "
+                f"simulated; a fabricated generation must never be served as a result"
+            )
+            raise ValueError(msg)
+        if self.run_kind.simulated_expected and not self.simulated:
+            msg = (
+                f"run {self.run_id} is marked {self.run_kind.value} but its models are "
+                f"real; a local-first phase must not invoke a provider"
             )
             raise ValueError(msg)
 
@@ -199,7 +251,7 @@ class PilotRunConfiguration(BaseModel):
         prompt_set_digest: str,
         app_version: str,
         git_commit: str | None = None,
-        canonical: bool = False,
+        run_kind: RunKind = RunKind.LOCAL_FIXTURE,
     ) -> PilotRunConfiguration:
         """Derive a run configuration from validated protocol files.
 
@@ -224,7 +276,7 @@ class PilotRunConfiguration(BaseModel):
         )
         return cls(
             run_id=run_id,
-            canonical=canonical,
+            run_kind=run_kind,
             created_at=created_at,
             app_version=app_version,
             git_commit=git_commit,
@@ -234,11 +286,12 @@ class PilotRunConfiguration(BaseModel):
             truth_ledger_version=protocol.truth_ledger_version,
             interview_version=protocol.interview_version,
             protocol_content_hashes=dict(bundle.digests),
-            max_cycles=protocol.max_cycles,
+            maximum_cycles=protocol.maximum_cycles,
             checkpoint_cycles=protocol.checkpoint_cycles,
             arms=protocol.arms,
             memory_budget_tokens=protocol.memory_budget_tokens,
             counter_version=protocol.counter_version,
+            token_count_source=protocol.token_count_source,
             writer_model=writer_model,
             embedding_model=embedding_model,
             writer_prompt_version=protocol.writer_prompt_version,

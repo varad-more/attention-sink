@@ -28,20 +28,27 @@ damaged evidence; the deck never narrates that a canonical fact is false.
 ## The lifecycle of a protocol
 
 ```
-make pilot-validate    # do the five files agree, and has any frozen one been edited?
-make pilot-calibrate   # count the seed world, write the budget it implies
-make pilot-freeze      # digest each file and mark it frozen
-make pilot-local-run   # twenty-four fixture cycles, exported with checksums
+make pilot-validate        # do the five files agree, and has any validated one been edited?
+make pilot-calibrate       # measure the seed world, write the provisional budget it implies
+make pilot-local-validate  # digest each file, mark it local_validated, write the manifest
+make pilot-local-run       # twenty-four fixture cycles, exported with checksums
+make pilot-draft           # return every file to draft so it can be edited
 ```
 
-The order is enforced by the commands, not by this document. `freeze` refuses an
-uncalibrated protocol, because a budget frozen before it was measured is a number
-nobody derived from anything. A run refuses a protocol that is not frozen, has been
-edited since freezing, or has no budget.
+The order is enforced by the commands, not by this document. `local-validate` refuses an
+uncalibrated protocol, because a budget sealed before it was measured is a number nobody
+derived from anything. A run refuses a protocol that is not validated, has been edited
+since, or has no budget.
 
-Each file moves through `draft` → `frozen` → `retired`. The digest covers the parsed
-content rather than the file bytes, so reflowing a YAML block is not a modification and
-changing a word of a stimulus is.
+Each file moves through `draft` → `local_validated` → `aws_calibrated` → `frozen` →
+`retired`. **This phase stops at `local_validated`**, and `promote_documents` refuses to
+write anything further: the budget is denominated in a local approximate counter, and
+freezing that would make the canonical experiment a measurement of the fixture
+tokeniser. See [ADR-local-first-pilot](adr/ADR-local-first-pilot.md).
+
+The digest covers the parsed content rather than the file bytes, so reflowing a YAML
+block is not a modification and changing a word of a stimulus is. `manifest.json`
+records every digest, the prompt template hashes included, in one place.
 
 ## What only the protocol knows
 

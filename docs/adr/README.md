@@ -18,7 +18,12 @@ make us revisit it. Superseded records stay in place; they are not deleted.
 | [010](010-opaque-memory-labels-in-prompts.md)                         | Models see memories under opaque per-request labels            |
 | [011](011-exact-token-counts-in-production.md)                        | Production budgets use the model's own token counts            |
 | [008-pilot](ADR-008-pilot-snapshot-architecture.md)                   | Pilot V1 runs one cycle engine over immutable snapshots        |
+| [local-first-pilot](ADR-local-first-pilot.md)                         | Complete the application locally before requiring AWS          |
 
 `ADR-008-pilot` shares a number with `ADR-008` and is unrelated to it. The name is
 fixed by the Pilot Scope Override; the suffix is what keeps the two citable apart. See
 the note at the top of that record.
+
+`ADR-local-first-pilot` is deliberately unnumbered. It changes the order in which the
+numbered decisions are implemented rather than making a new architectural decision, and
+a sequence number would imply it sits alongside them.

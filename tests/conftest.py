@@ -38,8 +38,11 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
 # --------------------------------------------------------------------- pilot
 
 REPO_ROOT = _TESTS_ROOT.parent
-PILOT_ROOT = REPO_ROOT / "experiments" / "pilot"
+PILOT_ROOT = REPO_ROOT / "experiment" / "pilot"
 FIXED_CLOCK_TIME = datetime(2026, 8, 29, 12, 0, 0, tzinfo=UTC)
+LOCAL_COUNTER_SOURCE = "local_fixture_heuristic"
+"""What `token_count_source` reads in every local run. Named rather than repeated,
+so the five places that assert it cannot drift apart."""
 
 
 def fixed_clock() -> datetime:

@@ -8,8 +8,15 @@ import pytest
 
 from attention_sink.domain import CANONICAL_ARMS, ArmId, make_memory_id
 from attention_sink.model_gateway import GatewaySettings, build_gateway
-from attention_sink.pilot import CitationMode, PilotRunConfiguration, ProtocolBundle, model_specs
+from attention_sink.pilot import (
+    CitationMode,
+    PilotRunConfiguration,
+    ProtocolBundle,
+    RunKind,
+    model_specs,
+)
 from attention_sink.pilot.cli import BUDGET_ROUNDING, proposed_budget
+from tests.conftest import LOCAL_COUNTER_SOURCE
 
 NOW = datetime(2026, 8, 29, tzinfo=UTC)
 
@@ -66,14 +73,34 @@ def test_the_dreamer_parameters_reach_the_summarising_arm(pilot_bundle: Protocol
 
 
 def test_a_fixture_run_may_not_call_itself_canonical(pilot_bundle: ProtocolBundle):
-    config = configuration(pilot_bundle, canonical=True)
+    config = configuration(pilot_bundle, run_kind=RunKind.AWS_CANONICAL)
     assert config.simulated
-    with pytest.raises(ValueError, match="marked canonical but its models are simulated"):
-        config.require_canonical_ready()
+    assert config.canonical
+    with pytest.raises(ValueError, match="but its models are simulated"):
+        config.require_run_kind_consistent()
 
 
-def test_a_fixture_run_that_admits_it_is_simulated_is_fine(pilot_bundle: ProtocolBundle):
-    configuration(pilot_bundle).require_canonical_ready()
+def test_a_local_fixture_run_that_admits_what_it_is_is_fine(pilot_bundle: ProtocolBundle):
+    config = configuration(pilot_bundle)
+    assert config.run_kind is RunKind.LOCAL_FIXTURE
+    assert not config.canonical
+    assert config.token_count_source == LOCAL_COUNTER_SOURCE
+    config.require_run_kind_consistent()
+
+
+def test_a_local_run_may_not_be_driven_by_real_models(pilot_bundle: ProtocolBundle):
+    """The credential boundary, stated as a refusal rather than as a promise."""
+    config = configuration(pilot_bundle)
+    real = config.writer_model.model_copy(update={"simulated": False})
+    with pytest.raises(ValueError, match="but its models are real"):
+        config.model_copy(
+            update={"writer_model": real, "embedding_model": real}
+        ).require_run_kind_consistent()
+
+
+def test_a_staging_run_is_neither_canonical_nor_expected_to_be_simulated():
+    assert not RunKind.AWS_STAGING.is_canonical
+    assert not RunKind.AWS_STAGING.simulated_expected
 
 
 def test_every_protocol_digest_is_recorded(pilot_bundle: ProtocolBundle):
