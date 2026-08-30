@@ -71,8 +71,11 @@ than against a local build, and all six are fixed:
 6. `make local-all` claimed to start from an empty database and failed on its second
    run.
 
-One action is outstanding and it is the operator's: a single `cdk deploy` carrying the
-raised concurrency cap and the dataset behaviour. It needs approval for an
-`s3:GetObject` grant to the CloudFront service principal, scoped by `AWS:SourceArn` to
-this distribution. Until it lands, two rows in the traceability document are PARTIAL,
-and neither is one of the sixteen conditions on the release decision.
+A seventh defect surfaced only once the dataset was actually served: the export
+manifest lists seventeen files, because `checksums.sha256` cannot appear among its own
+checksums, so the download list omitted exactly the file that makes the other
+seventeen verifiable. It is listed explicitly now.
+
+The deploy is applied. Nothing is outstanding: 66 Playwright flows pass against the
+live site, a 24-request burst returns twenty-four 200s, the dataset downloads through
+CloudFront, and the schedule is DISABLED with execution disarmed.

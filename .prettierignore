@@ -20,3 +20,6 @@ apps/web/dist/
 # The frozen protocol's canonical manifest. Written by `make pilot-freeze` with its
 # own digest recorded beside it, so reformatting it would invalidate the freeze.
 experiment/pilot/canonical-run-manifest.json
+
+# Per-developer Claude Code settings. Git-ignored, not this repository's to format.
+.claude/settings.local.json

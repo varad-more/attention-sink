@@ -2,14 +2,12 @@
 
 ## Decision
 
-**READY WITH NON-BLOCKING LIMITATIONS.**
+**READY.**
 
-The canonical experiment is complete, verified, exported and public. Two improvements
-found by the release checks are written, tested and committed but not yet applied to
-the running deployment, because applying them needs one `cdk deploy` that grants
-CloudFront read access to the export bucket — an IAM change, and the operator's to
-approve. Neither is one of the sixteen conditions on the decision; both are named
-below, and both become PASS the moment that deploy lands.
+The canonical experiment is complete, verified, exported and public, and every one of
+the sixteen conditions holds against the live deployment. Nothing is PARTIAL. The
+scheduler is disabled and the run-cycle function is disarmed, so the deployment makes
+no model calls and costs only storage.
 
 ## What was produced
 
@@ -68,18 +66,18 @@ Six mechanisms diverged; that they diverged _this way_ is a single observation, 
 effect size. The experiment is about explicit external memory records and makes no
 claim about the model's internal KV cache, attention, hidden state or awareness.
 
-**Operational, pending one deploy.** The read API is capped at 20 concurrent
-executions on the live stack; a 24-request burst returned three 503s, and the client
-renders a stated error rather than a broken page. The cap is raised to 100 in the
-committed code. The dataset is exported, checksummed and public-safe, but the
-distribution does not yet serve it, so the Methodology page currently lists the
-eighteen files without linking them. Both are fixed by the same deploy.
+**Operational.** The read API is capped at 100 concurrent executions. That is a
+runaway guard, not a capacity plan: an exhibition that went viral would meet it, and
+a visitor who does gets the client's stated error rather than a broken page. The cap
+is one line in `pilot-stack.ts`. The distribution serves only the canonical export
+prefix, so a staging rehearsal is never reachable as though it were a result.
 
 **Cost.** The estimate in the usage report is measured counts times configured rates.
 It is not a bill and nothing here guarantees a zero-cost account.
 
 ## Remaining blockers
 
-None on the experiment or its data. One operator action outstanding: the deploy
-described above, which needs approval for an `s3:GetObject` grant to the CloudFront
-service principal, scoped by `AWS:SourceArn` to this distribution alone.
+None. The deploy carrying the concurrency cap and the dataset behaviour is applied;
+its `s3:GetObject` grant to the CloudFront service principal is scoped by
+`AWS:SourceArn` to this distribution alone, and the export bucket remains private to
+everything else.

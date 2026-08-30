@@ -15,11 +15,8 @@ protocol `pilot-v1` FROZEN, manifest
 `amazon.nova-micro-v1:0` and `amazon.titan-embed-text-v2:0` in `us-east-1`, budget 208
 `bedrock_converse_usage` tokens.
 
-Two rows below are PARTIAL, both for the same reason and neither for a reason found in
-the code: the fix is written, tested, and committed, and applying it to the live
-deployment needs one `cdk deploy` that grants CloudFront read access to the export
-bucket. That grant is an IAM change, and it is the operator's to approve. Neither row
-is one of the sixteen conditions on the release decision.
+No row is PARTIAL. Every row was established against the live deployment or against a
+test that would fail if it stopped holding.
 
 ## The six policy invariants
 
@@ -70,39 +67,39 @@ is one of the sixteen conditions on the release decision.
 
 ## The deployment
 
-| Requirement                                       | State   | Evidence                                                                                                        |
-| ------------------------------------------------- | ------- | --------------------------------------------------------------------------------------------------------------- |
-| Both S3 buckets are private                       | PASS    | All four public-access blocks on; direct object GET returns 403                                                 |
-| CloudFront serves the frontend over OAC           | PASS    | Bucket policy names the distribution; direct S3 is refused                                                      |
-| Every CloudFront origin is S3 behind an OAC       | PASS    | CDK assertion walks all origins; no custom origin permitted                                                     |
-| A restrictive CSP and security headers are served | PASS    | CSP, HSTS, nosniff, `DENY`, `no-referrer` on every response                                                     |
-| CORS is restricted to configured origins          | PASS    | `access-control-allow-origin` is the distribution, never `*`                                                    |
-| The public API has no mutation route              | PASS    | POST, PUT, PATCH, DELETE all 404; the read role holds no write action                                           |
-| IAM is least-privilege, per function              | PASS    | Explicit statements, no `grantReadWriteData`; CDK assertions                                                    |
-| Rate limits and a budget circuit breaker exist    | PASS    | `ModelCallLimits` checked before every call; reserved concurrency                                               |
-| Administrative actions are protected              | PASS    | Arming needs IAM to change a function's environment; nothing public                                             |
-| No credential or prompt appears in a log          | PASS    | Closed 13-field allowlist in `telemetry.py`; log grep                                                           |
-| Scheduler defaults to disabled everywhere         | PASS    | `environments.ts`; CDK assertion on all three environments                                                      |
-| Scheduler is disabled after completion            | PASS    | `preflight`: `attention-sink-production-cycle DISABLED`, execution off                                          |
-| The read API survives a burst of visitors         | PARTIAL | Cap raised 20 → 100 and asserted in CDK; **awaiting one deploy**. At 20, a 24-request burst returned three 503s |
+| Requirement                                       | State | Evidence                                                                                    |
+| ------------------------------------------------- | ----- | ------------------------------------------------------------------------------------------- |
+| Both S3 buckets are private                       | PASS  | All four public-access blocks on; direct object GET returns 403                             |
+| CloudFront serves the frontend over OAC           | PASS  | Bucket policy names the distribution; direct S3 is refused                                  |
+| Every CloudFront origin is S3 behind an OAC       | PASS  | CDK assertion walks all origins; no custom origin permitted                                 |
+| A restrictive CSP and security headers are served | PASS  | CSP, HSTS, nosniff, `DENY`, `no-referrer` on every response                                 |
+| CORS is restricted to configured origins          | PASS  | `access-control-allow-origin` is the distribution, never `*`                                |
+| The public API has no mutation route              | PASS  | POST, PUT, PATCH, DELETE all 404; the read role holds no write action                       |
+| IAM is least-privilege, per function              | PASS  | Explicit statements, no `grantReadWriteData`; CDK assertions                                |
+| Rate limits and a budget circuit breaker exist    | PASS  | `ModelCallLimits` checked before every call; reserved concurrency                           |
+| Administrative actions are protected              | PASS  | Arming needs IAM to change a function's environment; nothing public                         |
+| No credential or prompt appears in a log          | PASS  | Closed 13-field allowlist in `telemetry.py`; log grep                                       |
+| Scheduler defaults to disabled everywhere         | PASS  | `environments.ts`; CDK assertion on all three environments                                  |
+| Scheduler is disabled after completion            | PASS  | `preflight`: `attention-sink-production-cycle DISABLED`, execution off                      |
+| The read API survives a burst of visitors         | PASS  | Cap 100, asserted in CDK; a 24-request burst returns 24 × 200. At 20 it returned three 503s |
 
 ## The product
 
-| Requirement                                  | State   | Evidence                                                                                                                                                       |
-| -------------------------------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| The exhibition contains no fixture data      | PASS    | `VITE_FIXTURE_MODE=false`; no fixture bundle                                                                                                                   |
-| The page states what produced its words      | PASS    | Footer reads the run's own labels; flow 1-2b                                                                                                                   |
-| Six minds are comparable at one cycle        | PASS    | Playwright flow 3, deployed                                                                                                                                    |
-| Cycles 0, 12 and 24 are all reachable        | PASS    | Playwright flows 4 and 8, deployed                                                                                                                             |
-| Graveyard, Timeline, Interviews, Echoes work | PASS    | Playwright flows 5–10, deployed                                                                                                                                |
-| Evidence links resolve                       | PASS    | `verify_run.py` "metric evidence resolves"                                                                                                                     |
-| Dreamer compression is shown accurately      | PASS    | Playwright flow 10; lineage resolves both ways                                                                                                                 |
-| Methodology carries the required caveats     | PASS    | Playwright flows 11 and 11b, deployed                                                                                                                          |
-| No fixture-mode indicator appears            | PASS    | Playwright flows 1-2 and 13, deployed                                                                                                                          |
-| Mobile layout and keyboard navigation work   | PASS    | Playwright flows 13–14, mobile and desktop                                                                                                                     |
-| Accessibility basics hold                    | PASS    | `accessibility.spec.ts`, both projects, deployed                                                                                                               |
-| Safe error pages work                        | PASS    | 403/404 fall back to the client, which renders a stated error                                                                                                  |
-| The dataset download works                   | PARTIAL | Behaviour, links and a followed-link assertion are written and tested; **awaiting the same deploy**. Until then the page lists the dataset without offering it |
+| Requirement                                  | State | Evidence                                                                         |
+| -------------------------------------------- | ----- | -------------------------------------------------------------------------------- |
+| The exhibition contains no fixture data      | PASS  | `VITE_FIXTURE_MODE=false`; no fixture bundle                                     |
+| The page states what produced its words      | PASS  | Footer reads the run's own labels; flow 1-2b                                     |
+| Six minds are comparable at one cycle        | PASS  | Playwright flow 3, deployed                                                      |
+| Cycles 0, 12 and 24 are all reachable        | PASS  | Playwright flows 4 and 8, deployed                                               |
+| Graveyard, Timeline, Interviews, Echoes work | PASS  | Playwright flows 5–10, deployed                                                  |
+| Evidence links resolve                       | PASS  | `verify_run.py` "metric evidence resolves"                                       |
+| Dreamer compression is shown accurately      | PASS  | Playwright flow 10; lineage resolves both ways                                   |
+| Methodology carries the required caveats     | PASS  | Playwright flows 11 and 11b, deployed                                            |
+| No fixture-mode indicator appears            | PASS  | Playwright flows 1-2 and 13, deployed                                            |
+| Mobile layout and keyboard navigation work   | PASS  | Playwright flows 13–14, mobile and desktop                                       |
+| Accessibility basics hold                    | PASS  | `accessibility.spec.ts`, both projects, deployed                                 |
+| Safe error pages work                        | PASS  | 403/404 fall back to the client, which renders a stated error                    |
+| The dataset download works                   | PASS  | Playwright flow 12 follows the link through CloudFront and reads the digest file |
 
 ## Engineering
 

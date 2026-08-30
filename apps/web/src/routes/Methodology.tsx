@@ -13,6 +13,16 @@ import { datasetPath } from '../dataset';
 import type { ExportManifest } from '../api/types';
 
 /**
+ * The digest file, which is in the export directory but not in the export manifest.
+ *
+ * It cannot appear among its own checksums, so the manifest's `files` map has
+ * seventeen entries for an eighteen-file directory. It is also the single most useful
+ * one to download -- it is what makes the other seventeen checkable -- so listing only
+ * what the manifest names would omit exactly the file a sceptical reader wants first.
+ */
+const CHECKSUMS = 'checksums.sha256';
+
+/**
  * The download cell for one export.
  *
  * A published export is served from the same distribution as this page, so every file
@@ -25,17 +35,16 @@ function downloadCell(manifest: ExportManifest) {
   if (path === null) {
     return <span className="state-empty">not published</span>;
   }
+  const names = [...new Set([...Object.keys(manifest.files), CHECKSUMS])].sort();
   return (
     <ul className="file-list" data-testid="dataset-downloads">
-      {Object.keys(manifest.files)
-        .sort()
-        .map((name) => (
-          <li key={name}>
-            <a className="mono" href={`${path}${name}`}>
-              {name}
-            </a>
-          </li>
-        ))}
+      {names.map((name) => (
+        <li key={name}>
+          <a className="mono" href={`${path}${name}`}>
+            {name}
+          </a>
+        </li>
+      ))}
     </ul>
   );
 }
