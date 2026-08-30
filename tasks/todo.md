@@ -28,20 +28,51 @@
 
 ## D. STEPS 4-9 — the canonical run
 
-- [ ] D1 Deploy `AttentionSink-production`.
-- [ ] D2 Create `run_aws_canonical`, cycle-0 interviews, verify cycle-0 in the UI.
-- [ ] D3 Safety limits; reserved concurrency; lock timeout; retries; DLQs.
-- [ ] D4 One manual canonical cycle, fully verified.
-- [ ] D5 Enable the scheduler; at least one scheduler-triggered cycle.
-- [ ] D6 All twenty-four cycles, verified per cycle and at checkpoints 12 and 24.
-- [ ] D7 Failure recovery documented as it happens.
-- [ ] D8 Final analysis; mark COMPLETE; disable the scheduler.
+- [x] D1 Deploy `AttentionSink-production`.
+- [x] D2 Create `run_aws_canonical`, cycle-0 interviews, verify cycle-0 in the UI.
+- [x] D3 Safety limits; reserved concurrency; lock timeout; retries; DLQs.
+- [x] D4 One manual canonical cycle, fully verified.
+- [x] D5 Enable the scheduler; at least one scheduler-triggered cycle.
+- [x] D6 All twenty-four cycles, verified per cycle and at checkpoints 12 and 24.
+- [x] D7 Failure recovery documented as it happens.
+- [x] D8 Final analysis; mark COMPLETE; disable the scheduler.
 
 ## E. STEPS 10-14 — export, release check, reports
 
-- [ ] E1 Canonical export to the immutable prefix; verify every check.
-- [ ] E2 Public release check from a clean browser session.
-- [ ] E3 `docs/pilot/aws-cost-and-usage-report.md`.
-- [ ] E4 Full verification suite.
-- [ ] E5 `docs/pilot/final-requirements-traceability.md`, `release-readiness-report.md`.
-- [ ] E6 Teardown inventory updated.
+- [x] E1 Canonical export to the immutable prefix; verify every check.
+- [x] E2 Public release check from a clean browser session.
+- [x] E3 `docs/pilot/aws-cost-and-usage-report.md`.
+- [x] E4 Full verification suite.
+- [x] E5 `docs/pilot/final-requirements-traceability.md`, `release-readiness-report.md`.
+- [x] E6 Teardown inventory updated.
+
+## Review
+
+All of A–E are done. The canonical run is `run_aws_canonical`: `AWS_CANONICAL`,
+24/24 cycles, `completed`, protocol `pilot-v1` FROZEN, budget 208
+`bedrock_converse_usage` tokens, `amazon.nova-micro-v1:0` and
+`amazon.titan-embed-text-v2:0` in `us-east-1`. Twenty-six invariant checks pass
+against it and twenty-six against the local fixture run; 1,159 Python tests, 48 CDK
+assertions, 11 web tests, and 66 Playwright flows against the deployed site.
+
+Six defects were found by running the release checks against the deployed run rather
+than against a local build, and all six are fixed:
+
+1. `max_model_calls_per_run` never bound across Lambda invocations, and the check that
+   should have caught it counted analysis calls against a per-cycle ceiling.
+2. Three components asserted provenance from the build instead of reading it from the
+   run — the footer, the Methodology limitations, and the export labels.
+3. The read API was capped at 20 concurrent executions; a 24-request burst returned
+   three 503s.
+4. The exhibition described a dataset it gave nobody a way to download.
+5. `make pilot-freeze`, run again after the freeze, rewrote the canonical manifest's
+   `git_commit` and `content_hash` — silently invalidating the run bound to the old
+   hash. The manifest was restored and the writer now refuses the change.
+6. `make local-all` claimed to start from an empty database and failed on its second
+   run.
+
+One action is outstanding and it is the operator's: a single `cdk deploy` carrying the
+raised concurrency cap and the dataset behaviour. It needs approval for an
+`s3:GetObject` grant to the CloudFront service principal, scoped by `AWS:SourceArn` to
+this distribution. Until it lands, two rows in the traceability document are PARTIAL,
+and neither is one of the sixteen conditions on the release decision.

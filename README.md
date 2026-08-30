@@ -19,6 +19,19 @@ budget is exceeded.
 Two optional reference arms bound the result: one that forgets nothing and one that
 remembers nothing.
 
+## The run
+
+One canonical run exists. `run_aws_canonical` ran twenty-four cycles on real Amazon
+Bedrock models under a frozen protocol, and the exhibition that shows it is public:
+
+**https://d1qskxceo899me.cloudfront.net**
+
+Twenty-four cycles, six arms, 144 immutable snapshots, 157 retired memories, 18
+interviews at cycles 0, 12 and 24, and an eighteen-file dataset whose checksums verify
+with `sha256sum -c` and nothing from this repository. The six mechanisms ended holding
+9, 12, 12, 12, 11 and 13 active memories from the same 208-token budget. What that
+means, and what a single run cannot mean, is on the Methodology page.
+
 ## What this is, and what it is not
 
 This is an experiment in **application-level episodic memory**: explicit memory
@@ -142,7 +155,11 @@ tests/               unit, property, integration, e2e
 - [Memory policies](docs/memory-policies.md) - the exact algorithm and tie-breaker for every arm
 - [Model gateway](docs/model-gateway.md) - the seven model roles, prompts and their digests, schemas, failures, and metadata
 - [Pilot scope](docs/pilot-scope.md) - what the 24-cycle pilot runs, and where it narrows the production design
-- [AWS staging report](docs/pilot/aws-staging-report.md) - what the deployment proved, and what still blocks canonical execution
+- [Release readiness](docs/pilot/release-readiness-report.md) - the decision, the sixteen conditions, and the limitations
+- [Requirements traceability](docs/pilot/final-requirements-traceability.md) - every requirement and the evidence it holds
+- [AWS token calibration](docs/pilot/aws-token-calibration.md) - how the 208-token budget was derived, and against what
+- [AWS cost and usage](docs/pilot/aws-cost-and-usage-report.md) - what the canonical run actually spent
+- [AWS staging report](docs/pilot/aws-staging-report.md) - what the staging deployment proved before the canonical run
 - [AWS teardown](docs/pilot/aws-teardown.md) - every resource a deployment creates, and how to remove it
 - [System context](docs/architecture/system-context.md)
 - [Container view](docs/architecture/container-view.md)

@@ -576,5 +576,40 @@ will not use would produce a number nobody should freeze.
 
 ## Phase 8
 
-Not started. What is left: AWS token calibration (blocked, above), freezing the
-protocol, the canonical twenty-four-cycle run, and public release.
+Complete. The canonical run exists, is finished, and is public.
+
+`CountTokens` turned out to be unavailable on every model this account can reach, so
+the exact counter was reached a different way: one `Converse` call with
+`maxTokens=1` returns `usage.inputTokens`, which is the writer model's own
+tokenisation of the request. ADR-013 records the decision; ADR-012 is superseded in
+part. The requirement was always the number, never the operation, and there is still
+no fallback to an approximate count.
+
+With an exact counter the budget was calibrated against `amazon.nova-micro-v1:0` and
+frozen at 208 tokens. The protocol advanced `LOCAL_VALIDATED → AWS_CALIBRATED →
+FROZEN`, and `experiment/pilot/canonical-run-manifest.json` pins the models,
+inference settings, prompt hashes, policy parameters, metric versions and commit that
+a launch is checked against — a different model ID, budget, prompt hash or edited
+protocol file each cause rejection, and each has a test.
+
+`run_aws_canonical` then ran twenty-four cycles on EventBridge Scheduler: 144
+snapshots, 157 Graveyard entries, 18 interviews at cycles 0, 12 and 24, 2,062 metric
+rows, 1,429 model calls, and six arms that ended with 9, 12, 12, 12, 11 and 13 active
+memories. Twenty-six invariant checks pass against it. The dataset is exported to the
+immutable canonical prefix as eighteen files whose checksums verify with `sha256sum -c`
+and no tool from this repository.
+
+The exhibition is at https://d1qskxceo899me.cloudfront.net, reading a public API with
+no mutation route, over private buckets, behind Origin Access Control and a
+restrictive content security policy. The scheduler is disabled and the run-cycle
+function is disarmed.
+
+### Deliberately not delivered in this phase
+
+- No Step Functions and no event ledger. Both remain accepted decisions
+  (ADR-002, ADR-003) deferred by ADR-local-first-pilot.
+- No WebSocket API. The exhibition polls.
+- No SNS topic behind the alarms. They fire and are visible; wiring a notification
+  channel needs an address this repository should not hold.
+- No second run, no second model, and no repetition. One observation is not an
+  effect size, and the Methodology page says so.
