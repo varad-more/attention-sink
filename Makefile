@@ -217,7 +217,11 @@ pilot-local-release-check: ## Everything a local release candidate has to pass
 test-contract: ## Opt-in contract tests against real Bedrock (costs money, needs credentials)
 	AS_BEDROCK_CONTRACT_TESTS=1 $(UV) run pytest tests/integration/test_bedrock_contract.py -m integration
 
-test-web: ## TypeScript tests across every workspace (web client and CDK)
+test-web: aws-bundle-fast ## TypeScript tests across every workspace (web client and CDK)
+	@# The CDK suite synthesises the stack, and synthesis reads the bundle off disk.
+	@# `synth` declared that dependency and this target did not, so it passed on any
+	@# machine where an earlier synth had left dist/lambda behind and failed on a
+	@# fresh checkout -- which is CI, and only CI.
 	$(NPM) run test --workspaces --if-present
 
 synth: aws-bundle-fast ## Synthesise the CDK app to CloudFormation (no AWS credentials needed)
