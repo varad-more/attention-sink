@@ -323,6 +323,14 @@ class StructuredCaller:
         return response.output, metadata
 
     def _elapsed_ms(self, started: float) -> int:
+        # A fixture answers out of a file: there is no call to time, and the few
+        # microseconds of scheduling noise around one are not a property of the
+        # cycle. They used to land in `latency_ms`, which is inside the snapshot
+        # digest, so on a loaded machine two identical runs sealed different
+        # hashes. Zero here is what the fixture embedding provider already
+        # records for the same reason.
+        if self.simulated:
+            return 0
         return max(int((self.clock() - started) * 1000), 0)
 
     def _metadata(

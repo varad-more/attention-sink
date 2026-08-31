@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from datetime import UTC, datetime
 
 import pytest
@@ -97,6 +98,23 @@ def test_the_writer_may_legitimately_cite_nothing():
     result = gateway.writer.write(cycle=4, stimulus_text=STIMULUS, active_memories=MEMORIES)
 
     assert result.cited_memory_ids == ()
+
+
+def test_a_simulated_call_records_no_latency_however_slow_the_machine_was():
+    # latency_ms travels inside ArmCycleSnapshot, which is hashed. A fixture call
+    # that happened to cross a millisecond used to seal a different digest from the
+    # same call on a quiet machine, which broke the run-twice-get-the-same-hashes
+    # guarantee on loaded CI runners and nowhere else.
+    def slow(_user: str) -> dict[str, object]:
+        time.sleep(0.01)
+        return thought()
+
+    gateway, _ = write(slow)
+
+    result = gateway.writer.write(cycle=4, stimulus_text=STIMULUS, active_memories=MEMORIES)
+
+    assert result.metadata.simulated is True
+    assert result.metadata.latency_ms == 0
 
 
 def test_provider_failures_are_bounded_and_recorded():
