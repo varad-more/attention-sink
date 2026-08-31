@@ -39,7 +39,7 @@ PASTE_READY = SHOWCASE / "AWS_BUILDER_CENTER_ARTICLE_PASTE_READY.md"
 APP = "https://d1qskxceo899me.cloudfront.net"
 API = "https://ioyvs8o9xa.execute-api.us-east-1.amazonaws.com"
 REPO = "https://github.com/varad-more/attention-sink"
-PAGES = "https://varad-more.github.io/attention-sink/"
+PAGES = "https://varadmore.me/attention-sink/"
 RUN_ID = "run_aws_canonical"
 
 REQUIRED_TITLE = "Weekend Showcase Challenge: Attention Sink — Six Minds That Forget Differently"

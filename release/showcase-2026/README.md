@@ -13,7 +13,7 @@ They ran. The run is finished, frozen and public.
 |                            |                                                                                                                           |
 | -------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
 | **Live experiment**        | https://d1qskxceo899me.cloudfront.net                                                                                     |
-| **Project page**           | https://varad-more.github.io/attention-sink/                                                                              |
+| **Project page**           | https://varadmore.me/attention-sink/                                                                                      |
 | **Graveyard**              | https://d1qskxceo899me.cloudfront.net/graveyard?sort=oldest                                                               |
 | **Compare interviews**     | https://d1qskxceo899me.cloudfront.net/interviews?cycle=24&question=q01                                                    |
 | **Canonical dataset**      | https://d1qskxceo899me.cloudfront.net/canonical/run_aws_canonical/checksums.sha256                                        |
@@ -508,7 +508,7 @@ here once it is confirmed, and not before.
 | Release readiness   | [`docs/pilot/release-readiness-report.md`](https://github.com/varad-more/attention-sink/blob/main/docs/pilot/release-readiness-report.md)                   |
 | Article draft       | [`AWS_BUILDER_CENTER_ARTICLE.md`](AWS_BUILDER_CENTER_ARTICLE.md)         |
 | Repository          | https://github.com/varad-more/attention-sink                                                         |
-| Project page        | https://varad-more.github.io/attention-sink/                                                         |
+| Project page        | https://varadmore.me/attention-sink/                                                                 |
 
 ## Licence
 
