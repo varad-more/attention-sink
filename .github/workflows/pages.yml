@@ -1,0 +1,55 @@
+# The public front door. Builds the static showcase page from the canonical run's
+# stored metrics and publishes it to GitHub Pages.
+#
+# The page makes no network call, in the browser or at build time, so this workflow
+# needs no AWS credentials and nothing about the read API's origin allow-list has to
+# change to publish it. The live exhibition stays on CloudFront; this links to it.
+name: Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time, and never cancel one in flight: a half-published site is
+# worse than a slightly stale one.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: '3.12'
+          enable-cache: true
+
+      # The builder is standard library only, so it needs an interpreter and not the
+      # project's dependency set. `make pages` runs the same command locally.
+      - name: Build the site
+        run: uv run --no-project python scripts/build_pages_site.py
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    name: deploy
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

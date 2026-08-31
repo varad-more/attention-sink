@@ -52,3 +52,8 @@ apps/web/dist/
 # Author-only notes on the Builder Center article: the two passages that need a
 # personal decision before publishing. Deliberately not published with the showcase.
 docs/showcase/AWS_BUILDER_CENTER_ARTICLE_EDIT_NOTES.md
+
+# The GitHub Pages site. Generated from the canonical run's stored metrics by
+# `make pages` and published straight from the Pages workflow, so a built copy in
+# the repository would only be a second thing to keep in step.
+site/

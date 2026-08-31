@@ -17,7 +17,7 @@ SHELL := /bin/bash
 	aws-status aws-cycle aws-schedule-inspect aws-schedule-enable aws-schedule-disable \
 	aws-invoke-once aws-export aws-smoke aws-destroy aws-outputs aws-bootstrap aws-verify aws-cost \
 	aws-execution-inspect aws-execution-enable aws-execution-disable \
-	showcase showcase-charts showcase-evidence showcase-capture showcase-release \
+	pages showcase showcase-charts showcase-evidence showcase-capture showcase-release \
 	showcase-verify
 
 UV ?= uv
@@ -262,6 +262,9 @@ showcase-verify: ## Check the README, the article, the assets and the release pa
 
 showcase: showcase-charts showcase-evidence showcase-capture showcase-release showcase-verify ## The whole showcase pipeline, end to end
 	@echo "showcase: rebuilt and verified"
+
+pages: ## Build the static GitHub Pages site into site/ from the stored canonical metrics
+	$(UV) run python scripts/build_pages_site.py
 
 clean: ## Remove build, cache, and coverage artefacts
 	rm -rf .pytest_cache .mypy_cache .ruff_cache .hypothesis .coverage coverage.xml \
