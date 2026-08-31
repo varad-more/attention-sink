@@ -1,6 +1,6 @@
 {
   "package": "showcase-2026",
-  "generated_at": "2026-08-30T23:10:04+00:00",
+  "generated_at": "2026-08-31T00:44:26+00:00",
   "readme_word_count": 4154,
   "article_word_count": 2666,
   "screenshot_count": 21,
@@ -18,7 +18,7 @@
   "protocol_version": "pilot-v1",
   "memory_budget_tokens": 208,
   "token_count_source": "bedrock_converse_usage",
-  "source_commit": "970fc1806e91aee6712f3f0d62f97584e4d16dfb",
+  "source_commit": "9eb35a1f9c55d5eaad3c414a1dd006fdb155c0f9",
   "frozen_protocol_manifest": "sha256:8e218e488c8745f427a1babd216e674da7a019860b799e5d60356a64eaa0971f",
   "dataset_checksums": "https://d1qskxceo899me.cloudfront.net/canonical/run_aws_canonical/checksums.sha256",
   "qualification_gate": {
